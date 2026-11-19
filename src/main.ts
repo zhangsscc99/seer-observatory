@@ -41,7 +41,7 @@ scene.background = sky;
 scene.environment = sky;
 scene.environmentIntensity = 0.9;
 scene.backgroundIntensity = 1.0;
-const stars = makeStars(1600, 4000);
+const stars = makeStars(1100, 4000);
 scene.add(stars);
 
 const cabin = buildCabin();

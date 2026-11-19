@@ -49,7 +49,7 @@ export function buildShip(): ShipView {
     const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 1.8, 20), MAT.metal);
     pod.rotation.x = Math.PI / 2;
     pod.position.set(sx * 1.05, -0.05, 2.3);
-    const nozzle = new THREE.Mesh(new THREE.CircleGeometry(0.4, 20), glow(PAL.thruster, 2));
+    const nozzle = new THREE.Mesh(new THREE.CircleGeometry(0.4, 20), glow(PAL.thruster, 1.3));
     nozzle.position.set(sx * 1.05, -0.05, 3.21);
     group.add(wing, tipLight, fin, pod, nozzle);
   }

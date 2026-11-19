@@ -128,7 +128,8 @@ function report(label, s) {
 let ok = true;
 const errors = [];
 // landscape is the gated viewport; portrait is shot for the record
-for (const [w, h, gate] of [[844, 390, true], [390, 844, false]]) {
+const VIEWS = process.env.SEER_FAST ? [[844, 390, true]] : [[844, 390, true], [390, 844, false]];
+for (const [w, h, gate] of VIEWS) {
   const s = await open(w, h, errors);
   if (!s) {
     console.error('FAIL — page never rendered frames');

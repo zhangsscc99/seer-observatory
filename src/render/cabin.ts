@@ -302,8 +302,8 @@ export function buildCabin(): CabinView {
   group.add(holoPool);
 
   // lights: soft white fill + key from the skylight + holo green + cool rim
-  const hemi = new THREE.HemisphereLight(0xffffff, 0xaec4e6, 1.55);
-  const key = new THREE.DirectionalLight(0xffffff, 1.5);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x9fb8e0, 1.05);
+  const key = new THREE.DirectionalLight(0xffffff, 1.15);
   key.position.set(1.5, 6, 2.5);
   const holoLight = new THREE.PointLight(PAL.holoGreen, 5, 7, 1.6);
   holoLight.position.set(CABIN.pedestal.x, 1.7, CABIN.pedestal.z);

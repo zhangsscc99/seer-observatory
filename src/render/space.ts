@@ -33,7 +33,7 @@ void main() {
   vec3 col = albedo * (0.16 + 1.25 * day);
   col += albedo * uGlow * (1.0 - day) * smoothstep(0.55, 1.0, albedo.r); // night-side emissive (lava)
   float fres = pow(1.0 - max(dot(n, v), 0.0), 2.6);
-  col += uAtmo * fres * (0.35 + 0.95 * smoothstep(-0.5, 0.5, ndl));
+  col += uAtmo * fres * (0.25 + 0.75 * smoothstep(-0.5, 0.5, ndl));
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -47,9 +47,9 @@ void main() {
   vec3 n = normalize(vN);
   vec3 v = normalize(cameraPosition - vW);
   float d = clamp(-dot(n, v) / uEdge, 0.0, 1.0);
-  float a = pow(d, 2.2);
+  float a = pow(d, 3.2);
   float lit = 0.3 + 0.7 * smoothstep(-0.6, 0.4, dot(n, uSun));
-  gl_FragColor = vec4(uAtmo * a * lit * 1.25, 1.0);
+  gl_FragColor = vec4(uAtmo * a * lit * 0.8, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
@@ -208,7 +208,7 @@ export function buildSpace(): SpaceView {
   dustGeo.setAttribute('position', new THREE.BufferAttribute(dust, 3));
   const dustMat = new THREE.PointsMaterial({
     map: radialTexture([[0, 'rgba(255,255,255,1)'], [0.4, 'rgba(180,230,255,0.5)'], [1, 'rgba(120,200,255,0)']], 32),
-    color: 0xcfeeff, size: 1.1, sizeAttenuation: true, transparent: true, opacity: 0.85,
+    color: 0xcfeeff, size: 1.1, sizeAttenuation: true, transparent: true, opacity: 0.6,
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
   const dustPts = new THREE.Points(dustGeo, dustMat);

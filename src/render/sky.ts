@@ -49,17 +49,13 @@ void main() {
   float knot = smoothstep(0.62, 0.9, n3) * smoothstep(0.45, 0.7, n1);
   col += mix(vec3(0.25, 0.85, 0.80), vec3(0.95, 0.45, 0.75), n2) * knot * 0.55;
   // dark dust lanes for depth (multiplicative, floor stays > 0)
-  col *= 0.62 + 0.38 * smoothstep(0.30, 0.55, fbm(d * 2.8 + 20.0));
+  col *= 0.5 + 0.5 * smoothstep(0.30, 0.58, fbm(d * 2.8 + 20.0));
 
-  // warm scatter around the sun
   float sd = max(dot(d, normalize(uSun)), 0.0);
-  col += vec3(1.0, 0.72, 0.42) * (pow(sd, 6.0) * 0.30 + pow(sd, 40.0) * 0.5);
 
-  // baked faint star field (crisp bright stars are Points)
-  vec3 cell = floor(d * 190.0);
-  float h = hash(cell);
-  float star = step(0.9965, h) * (0.4 + 0.6 * hash(cell + 3.0));
-  col += vec3(0.75, 0.85, 1.0) * star * 0.8;
+  col *= 0.42;
+  // warm scatter around the sun
+  col += vec3(1.0, 0.72, 0.42) * (pow(sd, 6.0) * 0.22 + pow(sd, 40.0) * 0.5);
 
   gl_FragColor = vec4(col, 1.0);
 }`;
@@ -107,7 +103,7 @@ export function makeStars(count: number, radius: number): THREE.Points {
     pos[i * 3 + 1] = z * radius;
     pos[i * 3 + 2] = Math.sin(a) * r * radius;
     const t = rnd();
-    const b = 0.55 + Math.pow(rnd(), 2) * 0.9;
+    const b = 0.25 + Math.pow(rnd(), 3) * 1.1;
     col[i * 3] = (t < 0.2 ? 1.0 : 0.8) * b;
     col[i * 3 + 1] = (t < 0.2 ? 0.86 : 0.92) * b;
     col[i * 3 + 2] = (t < 0.2 ? 0.7 : 1.0) * b;
@@ -116,7 +112,7 @@ export function makeStars(count: number, radius: number): THREE.Points {
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   const mat = new THREE.PointsMaterial({
-    size: 2.2,
+    size: 1.7,
     sizeAttenuation: false,
     vertexColors: true,
     transparent: true,
