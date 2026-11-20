@@ -7,8 +7,8 @@
 
 | 名称 | Hex | 用途 | 占比 |
 | --- | --- | --- | --- |
-| hullWhite | `#F2F6FA` | 舱壁、控制台、机器人、飞船外壳 | 主色 ~55% |
-| hullShade | `#C9D4E0` | 端盖、扶壁、次级壳体 | ~15% |
+| hullWhite | `#DFE7F0` | 舱壁、控制台、机器人、飞船外壳 | 主色 ~55% |
+| hullShade | `#B4C2D2` | 端盖、扶壁、次级壳体 | ~15% |
 | panelGrey / metalDark | `#8E9DB0` / `#3A475A` | 金属饰条、踢脚、格栅 | ~8% |
 | cyan | `#38E1FF` | 灯带、眼睛、关节、屏幕读数、HUD 描边 | 发光强调 ~10% |
 | blueCarpet | `#1C3F9E` | 座椅区条纹地毯、屏幕底色 | ~8% |
@@ -24,9 +24,9 @@
 
 | 材质 | 模型 | 参数 | 说明 |
 | --- | --- | --- | --- |
-| hull（塑料壳） | Standard | rough 0.42 / metal 0.04 | 柔和高光，白而不反光 |
-| hullShade | Standard | rough 0.50 / metal 0.06 | 与 hull 拉开一档明度 |
-| metal（合金饰条） | Standard | rough 0.28 / metal 0.85 | 反射星云环境贴图，偏蓝 |
+| hull（哑光塑料壳） | Standard | rough 0.72 / metal 0.05 | F604 压暗一档：灰白塑料、柔和高光 |
+| hullShade | Standard | rough 0.68 / metal 0.08 | 与 hull 拉开一档明度 |
+| metal（合金饰条） | Standard | rough 0.30 / metal 0.85 | 反射星云环境贴图，偏蓝 |
 | metalDark | Standard | rough 0.40 / metal 0.70 | 踢脚、发射器 |
 | visor | Standard | rough 0.08 / metal 0.60 | 机器人面罩、飞船座舱盖 |
 | cushion | Standard | rough 0.85 / metal 0 | 座椅软垫（唯一的"布"） |
@@ -36,7 +36,8 @@
 | 行星 | ShaderMaterial | 贴图 × 昼夜 + fresnel 内边缘光 | 外加 BackSide 加色光晕壳（1.16R） |
 
 光照：舱内 = 半球光 1.05 + 顶部方向光 1.15 + 星图台绿色点光 + 中央冷色点光；
-太空 = 太阳方向光 2.6 + 蓝紫半球补光 1.25。渲染器 ACES Filmic，曝光 1.0，sRGB 输出。
+太空 = 太阳方向光 2.6 + 蓝紫半球补光 1.25。渲染器 ACES Filmic，sRGB 输出；
+**分区曝光**（F604）：舱内 `toneMappingExposure 0.72`，太空 `1.0`。
 
 ## 2.5 主角机器人模型（Blender → GLB）
 
@@ -56,20 +57,42 @@
 参考图只作氛围与识别特征对照（`docs/reference/robot/`），不导入任何外部贴图：材质全部是纯 PBR 参数 + 顶点色/
 面级别，因此 GLB 里没有纹理文件。
 
+## 2.6 冰环带 `icer`（F601–F603）
+
+调色板：冰蓝 `#8FD0F2`（深）/ 霜白 `#E8F7FF`（中）/ 纯白 `#FFFFFF`（亮），大气雾青 `#9FE6FF`。
+地表 = canvas 程序化 equirect 贴图：蓝白斑驳冰壳 + **voronoi 细密多边形裂纹**（jittered grid，F2−F1 边距 → 深蓝裂纹线，
+强度随低频噪声起伏）+ 极冠亮区。
+
+环系统（`src/render/rings.ts`，单 mesh、`RingGeometry(1.5R, 2.35R, 192, 4)`，NormalBlending + depthWrite off）：
+
+| 参数 | 值 |
+| --- | --- |
+| 倾角 | group 绕 x 17°、绕 z 9°；自转由 `uTime` 驱动（角粒纹 0.05 rad/s） |
+| 环带 | 3 层 hash→value noise（freq 6 / 15 / 37，权重 .52 / .30 / .18）+ 细颗粒 octave；alpha 基带 0.28–0.90 |
+| 卡西尼缝 | t ∈ 0.58–0.66（中心 0.62）alpha ≤ 0.06，两侧各 0.01 smoothstep |
+| 内外边缘 | t < 0.06 / t > 0.94 各淡出到 0 |
+| 前向散射 | `pow(max(dot(viewDir, sunDir), 0), 8)`，背光看环更亮 |
+| 行星本影 | 反日方向弧带：投影轴 |perp| < R（0.92–1.05R 过渡），落影内乘 0.35 |
+| 冰晶闪点 | 旋转 2D 颗粒 hash 阈值 0.985 + `pow(·,4)`，乘自发光色 `uCol2` |
+
+双层大气 halo（BackSide additive，`uEdge = √(1−1/scale²)`）：宽雾 `1.16R` pow 3.2 gain 0.8 + **窄亮边 `1.05R` pow 6.0 gain 1.0**（峰值更锐）；
+背光侧衰减到 20%（`lit = 0.2 + 0.8·smoothstep`），晨昏线把 `uAtmo` 调暖 8%（×`(1.08, 1.00, 0.92)`）。
+低温雾壳：`1.02R` FrontSide additive，`vnoise3` 随 `uTime` 漂移，向阳面 alpha ≤ 0.12。
+
 ## 3. 可读性要求
 
-硬指标（`scripts/measure-look.mjs`，844×390，舱内与太空**都**要过）：
+硬指标（`scripts/measure-look.mjs`，844×390 横屏卡阈值；390×844 竖屏只记录）：
 
 ```
-mean >= 55      top30 >= 45      darkFrac(<10) <= 0.20      p95 >= 140
+舱内:  mean 110..135     darkFrac(<10) <= 0.15      p95 >= 120
+太空:  mean 45..95                                p95 >= 120
 ```
 
-⚠️ 画面目标带（比脚本阈值更严，脚本暂未收紧）：**舱内 mean 110–135、太空 mean 45–95、p95 >= 120**。
-当前实测（2026-11-20，844×390）：舱内 mean **152.96**、top30 141.62、p95 215.81；太空 mean **92.04**、p95 173.81。
-即太空在带内，**舱内偏亮约 +18**（白舱壁接近纯白、主光方向弱、缺接触阴影与 AO），下一轮优先压曝光/加强主光对比把它拉回 110–135。
+当前实测（2026-11-20，F604 后，844×390）：舱内 mean **127.5**、top30 118.8、p95 197.3、darkFrac 0；
+太空 mean **93.2**、p95 174.6。竖屏记录：舱内 142.0 / 太空 90.8（信息项，不卡阈值）。
 
 注：`measure-look.mjs` 的截图在 4 核无 GPU 的 SwiftShader 下常超过默认 30 s，脚本已改为 `timeout: 120000` + 最多 3 次重试；
-阈值与判定逻辑未改。
+另外 `focusPlanet('icer')` 调试钩子把船放到 3R、背对太阳拍冰环带特写（`icer-{844x390,390x844}.png`，信息项）。
 
 设计要求：
 
@@ -98,11 +121,11 @@ mean >= 55      top30 >= 45      darkFrac(<10) <= 0.20      p95 >= 140
 
 ## 6. 本轮实测与遗留
 
-- `measure-look`（2026-11-20）：舱内 `mean 152.6 / top30 140.4 / darkFrac 0.00 / p95 215.8`；太空 `mean 92.1 / top30 113.2 / darkFrac 0.00 / p95 172.6`（844×390）；
-  竖屏 390×844 舱内 167.4 / 太空 89.5。
-- **遗留（下一轮必修）**：舱内 `mean 152.6` 高于项目真值带 110-135，画面偏白、金属与塑料对比被冲淡。
-  修法见 `docs/PLANETS.md` 的「下一轮（ice-ring）」第 4、5 条（分区曝光 + 材质 metalness/roughness 表 + 接触阴影 + measure 改区间阈值）。
-- 行星大气：本轮目视确认已是**分晨昏**（受光侧青蓝光晕、背光侧明显减弱），下一步要补"双层 halo + 晨昏暖散射"的厚度感。
+- `measure-look`（2026-11-20，M6）：舱内 `mean 127.5 / top30 118.8 / darkFrac 0.00 / p95 197.3`；太空 `mean 93.2 / top30 114.0 / p95 174.6`（844×390）；
+  竖屏 390×844 舱内 142.0 / 太空 90.8 / icer 106.3（信息项）。
+- 舱内曝光回归（F604）已落地：`152.6 → 127.5`——分区曝光 0.72 + 哑光塑料/地砖压暗一档 + 座椅/控制台/星图台脚下接触阴影贴片。
+- 冰环带（F602–F603）已上线：环带噪声 + 卡西尼缝 + 本影弧带 + 前向散射 + 冰晶闪点；voronoi 冰壳 + 双层 halo + 向阳雾壳。
+- 遗留：竖屏舱内 mean 142 仍偏高（竖屏只记录不卡阈值）；太空 mean 93 贴近上限，后续加亮部内容要先量再调。
 
 ## 音效事件表（`src/audio/sfx.ts`，全部 WebAudio 合成）
 

@@ -69,6 +69,16 @@ npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measu
 | 5.5 | HUD：扫描条 + 完成卡片 + 档案抽屉 + 警示条，按钮 ≥48px，竖屏无滚动条 | 看 `e2e/shots/cabin-390x844.png`；`grep -n "archBtn" index.html` |
 | 5.6 | 舱内交互改为「星图面板 → 面板内启航」，smoke/measure 脚本同步 | `node e2e/smoke.mjs` → `SMOKE OK`；`node scripts/measure-look.mjs` → `LOOK OK` |
 
+## M6 冰环带（F601–F605）
+
+| # | 功能 | verify |
+| --- | --- | --- |
+| 6.1 | `icer` 星球数据：出生点前方视野内、`hazard: 'cold'`、`kind: 'ice-ring'`，`TARGETS` 经 `PLANETS.map` 自动包含；各行星包围球互不重叠、均在 `SECTOR_RADIUS` 内 | `node --test --test-name-pattern="icer\|bounding\|sector" src/game/` |
+| 6.2 | 环系统 `src/render/rings.ts`：`RingGeometry(1.5R,2.35R,192,4)`、三层噪声径向环带、卡西尼缝（0.58–0.66 alpha≤0.06）、行星本影弧带 ×0.35、前向散射 pow 8、边缘 0.06 淡出、冰晶闪点 | `grep -n "buildRings\|cass\|umbra" src/render/rings.ts`；看 `e2e/shots/icer-844x390.png` |
+| 6.3 | 冰星本体：voronoi 多边形冰裂纹 + 极冠贴图；双层 halo（1.05R 窄亮边 pow 6 + 1.16R 宽雾）、背光侧 20%、晨昏暖 8%；向阳 1.02R 漂移雾壳 ≤0.12 | `grep -n "ice-ring\|HALO_SCALE_NARROW\|FROST" src/render/textures.ts src/render/space.ts` |
+| 6.4 | 舱内曝光回归：分区曝光（舱内 0.72 / 太空 1.0）、哑光塑料 0.05/0.72、地砖压暗、接触阴影贴片；mean 152.6 → 127.5 ∈ 110-135 | `node scripts/measure-look.mjs`（cabin 全 PASS） |
+| 6.5 | `measure-look` 逐场景阈值：cabin 110-135 + darkFrac ≤0.15 / space 45-95 / p95 ≥120（竖屏只记录）；`focusPlanet('icer')` 输出 `icer-{844x390,390x844}.png` | `node scripts/measure-look.mjs` → `LOOK OK`；`ls e2e/shots/icer-*.png` |
+
 ## 交付
 
 | # | 功能 | verify |
