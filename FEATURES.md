@@ -48,6 +48,16 @@ npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measu
 | 3.7 | 静音开关持久化（`localStorage['seer.muted']`） | `node e2e/smoke.mjs` |
 | 3.8 | 观感门槛（舱内 + 太空）与四张参考截图 | `node scripts/measure-look.mjs` |
 
+## M4 主角造型
+
+| # | 功能 | verify |
+| --- | --- | --- |
+| 4.1 | 主角换成 Blender 程序化生成的 GLB（大圆黑头壳 + 铆钉面罩 + 白发光竖瞳 + 金环 + 波纹管腿 + 大圆脚），`scripts/build-robot.py` 可复现 | `ls -l public/models/seer.glb`（>200 KB）；`grep -n "GLTFLoader\|BASE_URL" src/render/robot.ts`；看 `e2e/shots/robot-{front,mid,back}-844x390.png` |
+| 4.2 | GLB 加载失败降级到 primitive 造型（不白屏），`source` 标记 `'primitive' \| 'glb'` | `grep -n "failed to load — keeping primitive" src/render/robot.ts` |
+| 4.3 | 待机眼亮度呼吸 + 身体微起伏；行走波纹管伸缩 + 前倾 3°；悬浮收腿 | `grep -n "eyeGlow\|setHover" src/render/robot.ts src/main.ts` |
+| 4.4 | 截图门槛在 4 核 SwiftShader 下稳定（截图 120 s 超时 + 3 次重试，阈值不动） | `node scripts/measure-look.mjs` → `LOOK OK` |
+| 4.5 | ART-SPEC 记录机器人配色/材质/朝向/面数与实测亮度带 | `grep -n "2.5 主角机器人模型" docs/ART-SPEC.md` |
+
 ## 交付
 
 | # | 功能 | verify |

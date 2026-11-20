@@ -38,6 +38,24 @@
 光照：舱内 = 半球光 1.05 + 顶部方向光 1.15 + 星图台绿色点光 + 中央冷色点光；
 太空 = 太阳方向光 2.6 + 蓝紫半球补光 1.25。渲染器 ACES Filmic，曝光 1.0，sRGB 输出。
 
+## 2.5 主角机器人模型（Blender → GLB）
+
+主角不再是 primitive 拼块，而是**程序化生成**的 GLB：`public/models/seer.glb`（约 290 KB / 8.7k 三角面），
+由 `scripts/build-robot.py` 在无头 Blender 4.2 里生成，可复现（同一脚本 → 同一模型）。
+
+| 项 | 值 |
+| --- | --- |
+| 造型 | 大圆黑头壳（占总高 ≈45%）+ 铆钉边框圆形面罩 + 白色发光双竖瞳 + 头顶倾斜折板天线 + 颈间金环 + 波纹管短腿 + 外扩大圆脚（Q 版头身比 ≈1:1.1） |
+| 单位 / 朝向 | 米；原点在两脚之间地面；面朝 glTF **+Z**（与旧 primitive 的「面朝 +z」约定一致，`robot.ts` 不再额外旋转） |
+| 配色 | 头壳/躯干 `#1A1A1A` 哑光黑；金属环与包边金 `#D9B45B`；波纹管与天线杆 `#808080`；眼/高光 `#FFFFFF` 自发光 |
+| 材质（glTF metallic-roughness） | 黑壳 rough 0.35 / metal 0.10；金 metal 0.90 / rough 0.25；灰管 metal 0.80 / rough 0.40；眼 emissive 强度 ≈4（`KHR_materials_emissive_strength`） |
+| 动画挂点 | `head` / `arm_L|R` / `leg_L|R` / `foot_L|R` / `antenna` / `core` 的 pivot empty；待机眼亮度呼吸 + 身体微起伏，行走时波纹管伸缩 + 前倾 3°，悬浮时收腿 |
+| 加载与降级 | `GLTFLoader` 走 `import.meta.env.BASE_URL + 'models/seer.glb'`；**加载失败保留 primitive 造型**（`source` 标记 `'primitive' | 'glb'`），不白屏 |
+| 调试 | `window.__seer.cam.zoom`（默认 1，仅截图用）可拉近相机拍特写；`e2e/robot-shots.mjs` 输出 `e2e/shots/robot-{front,mid,back}-{844x390,390x844}.png` |
+
+参考图只作氛围与识别特征对照（`docs/reference/robot/`），不导入任何外部贴图：材质全部是纯 PBR 参数 + 顶点色/
+面级别，因此 GLB 里没有纹理文件。
+
 ## 3. 可读性要求
 
 硬指标（`scripts/measure-look.mjs`，844×390，舱内与太空**都**要过）：
@@ -45,6 +63,13 @@
 ```
 mean >= 55      top30 >= 45      darkFrac(<10) <= 0.20      p95 >= 140
 ```
+
+⚠️ 画面目标带（比脚本阈值更严，脚本暂未收紧）：**舱内 mean 110–135、太空 mean 45–95、p95 >= 120**。
+当前实测（2026-11-20，844×390）：舱内 mean **152.96**、top30 141.62、p95 215.81；太空 mean **92.04**、p95 173.81。
+即太空在带内，**舱内偏亮约 +18**（白舱壁接近纯白、主光方向弱、缺接触阴影与 AO），下一轮优先压曝光/加强主光对比把它拉回 110–135。
+
+注：`measure-look.mjs` 的截图在 4 核无 GPU 的 SwiftShader 下常超过默认 30 s，脚本已改为 `timeout: 120000` + 最多 3 次重试；
+阈值与判定逻辑未改。
 
 设计要求：
 
