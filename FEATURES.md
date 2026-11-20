@@ -58,6 +58,17 @@ npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measu
 | 4.4 | 截图门槛在 4 核 SwiftShader 下稳定（截图 120 s 超时 + 3 次重试，阈值不动） | `node scripts/measure-look.mjs` → `LOOK OK` |
 | 4.5 | ART-SPEC 记录机器人配色/材质/朝向/面数与实测亮度带 | `grep -n "2.5 主角机器人模型" docs/ART-SPEC.md` |
 
+## M5 扫描 / 档案 / 星图台
+
+| # | 功能 | verify |
+| --- | --- | --- |
+| 5.1 | 扫描系统（纯逻辑）：3.2R 进入范围、按住交互 4.2 s 完成、离开 0.35/s 衰减不清零、每星球资源/数量/日志、完成事件只发一次 | `node --test --test-name-pattern="scan" src/game/` |
+| 5.2 | 档案持久化 `seer.archive`：累计扫描次数与资源，坏 JSON 回退空档案 | `node --test --test-name-pattern="archive" src/game/` |
+| 5.3 | 星图台目标选择：`seer.target` → 目标行高亮、目标文案、全息球换色、太空里目标星球下方青色标记环 | `node e2e/smoke.mjs`（`星图 opens with selectable targets` / `target kelos saved`） |
+| 5.4 | 危害真的生效：`cold` 能量回充 ×0.55、`wind`/`radiation` 顶部警示条 | `node --test --test-name-pattern="hazard" src/game/` |
+| 5.5 | HUD：扫描条 + 完成卡片 + 档案抽屉 + 警示条，按钮 ≥48px，竖屏无滚动条 | 看 `e2e/shots/cabin-390x844.png`；`grep -n "archBtn" index.html` |
+| 5.6 | 舱内交互改为「星图面板 → 面板内启航」，smoke/measure 脚本同步 | `node e2e/smoke.mjs` → `SMOKE OK`；`node scripts/measure-look.mjs` → `LOOK OK` |
+
 ## 交付
 
 | # | 功能 | verify |

@@ -80,7 +80,31 @@ mean >= 55      top30 >= 45      darkFrac(<10) <= 0.20      p95 >= 140
    避开安全区；竖屏 390×844 可单手操作。
 5. 发光只用三种颜色（青 / 青绿 / 白），不出现红色警示色。
 
-## 4. 音效事件表（`src/audio/sfx.ts`，全部 WebAudio 合成）
+## 5. HUD / 提示层（M5，commit 4c0eb5b）
+
+新面板沿用同一套"玻璃 + 细边"语言，不引入新色：
+
+| 元素 | 配方 |
+| --- | --- |
+| 面板底 | `rgba(8,24,54,0.88)` + 1px `rgba(56,225,255,0.55)` 边 + `box-shadow 0 0 30px rgba(56,225,255,0.25)` + `backdrop-filter: blur(8px)` |
+| 面板标题 | 字重 800、`letter-spacing 0.1em`、色 `--cyan` |
+| 目标行 | `min-height 52px`；选中态 `.sel` 边 `--teal` + 外发光 16px + 内发光 10px（青绿） |
+| 扫描条 | 高 6px、圆角 3px、底 `rgba(255,255,255,0.14)`、填充 `--cyan` + `0 0 8px var(--cyan)` |
+| 警示条 | 青 `--cyan`（低温/气流）；金色 `#ffd166` + 12px 金色外发光（辐射）；**不用红色** |
+| 扫描完成卡片 | `rgba(10,30,66,0.85)` + `--teal` 边 + 24px 青绿外发光，2.2 s 自动淡出 |
+| 目标标记环 | `RingGeometry(1.0,1.12,72)`，`MeshBasicMaterial` additive、`depthWrite:false`、颜色 `PAL.cyan × 1.4`、`opacity 0.55 + 0.25·sin(2.4t)` 呼吸 |
+
+所有交互控件 ≥ 48×48，面板内部 `.rows` 允许 `overflow-y:auto`（`touch-action: pan-y`），**body 永不出现滚动条**。
+
+## 6. 本轮实测与遗留
+
+- `measure-look`（2026-11-20）：舱内 `mean 152.6 / top30 140.4 / darkFrac 0.00 / p95 215.8`；太空 `mean 92.1 / top30 113.2 / darkFrac 0.00 / p95 172.6`（844×390）；
+  竖屏 390×844 舱内 167.4 / 太空 89.5。
+- **遗留（下一轮必修）**：舱内 `mean 152.6` 高于项目真值带 110-135，画面偏白、金属与塑料对比被冲淡。
+  修法见 `docs/PLANETS.md` 的「下一轮（ice-ring）」第 4、5 条（分区曝光 + 材质 metalness/roughness 表 + 接触阴影 + measure 改区间阈值）。
+- 行星大气：本轮目视确认已是**分晨昏**（受光侧青蓝光晕、背光侧明显减弱），下一步要补"双层 halo + 晨昏暖散射"的厚度感。
+
+## 音效事件表（`src/audio/sfx.ts`，全部 WebAudio 合成）
 
 | 事件 | 触发 | 合成 | 时长 |
 | --- | --- | --- | --- |
