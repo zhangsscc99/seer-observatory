@@ -46,11 +46,30 @@ for (const [w, h] of [[390, 844], [844, 390]]) {
   await tap(page, 'go');
   assert.equal(await S(page, () => window.__seer.started), true);
   for (let i = 0; i < 100; i++) {
-    if ((await S(page, () => window.__seer.robotView.source)) === 'glb') break;
+    if ((await S(page, () => window.__seer.robotView.source)) !== 'primitive') break;
     await page.waitForTimeout(100);
   }
   console.log(`${w}x${h} robotView.source =`, await S(page, () => window.__seer.robotView.source));
   await frames(page, 20);
+
+  // 行走中: hold W and grab a frame mid-stride, camera at a 3/4 angle
+  await page.evaluate(() => {
+    window.__seer.cam.yaw = 0.8;
+    window.__seer.cam.zoom = 0.55;
+    window.__seer.cam.pitch = 0.15;
+  });
+  await page.keyboard.down('w');
+  await frames(page, 25);
+  for (let a = 0; a < 3; a++) {
+    try {
+      await page.screenshot({ path: path.join(SHOTS, `robot-walk-${w}x${h}.png`), timeout: 90000 });
+      break;
+    } catch (e) {
+      if (a === 2) throw e;
+    }
+  }
+  await page.keyboard.up('w');
+  console.log(`shot robot-walk-${w}x${h}.png`);
 
   for (const [view, yaw, zoom, pitch] of [
     ['front', 0, 0.42, 0.14],   // 正面特写

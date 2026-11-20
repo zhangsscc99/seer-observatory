@@ -1,16 +1,19 @@
-// Seer robot view: loads the Blender-built GLB (public/models/seer.glb) and
-// falls back to a primitive-built lookalike while it loads or if it fails —
-// never a blank screen. The model faces local +z; origin at the feet.
+// Seer robot view: loads the AI-built GLB (public/models/seer-express.glb,
+// Tencent Hunyuan hy-3d-express image-to-3D) with a two-step fallback —
+// Blender-built seer.glb, then a primitive lookalike — so there is never a
+// blank screen. The models face local +z; origin at the feet.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { MAT, glow } from './materials.ts';
 import { PAL } from './palette.ts';
 import { radialTexture } from './textures.ts';
 
 export interface RobotView {
   group: THREE.Group;
-  /** 'glb' once the Blender model is in, 'primitive' while pending/failed */
-  readonly source: 'primitive' | 'glb';
+  /** 'express' once the AI model is in, 'glb' for the Blender fallback,
+   *  'primitive' while pending or if both GLBs fail */
+  readonly source: 'primitive' | 'glb' | 'express';
   /** phase: metres walked; speed: m/s; t: seconds */
   animate(phase: number, speed: number, t: number, dt: number): void;
   /** tuck the telescoping legs and float (launch cinematic) */
@@ -34,6 +37,8 @@ interface Rig {
   core?: { o: THREE.Object3D; s: number };
   /** glowing-eye breathing: pulse emissiveIntensity (std) or colour (basic) */
   eyeGlow?: { mat: THREE.Material; base: number; baseColor?: THREE.Color };
+  /** single-mesh model (no named nodes): whole-body procedural animation */
+  solid?: boolean;
 }
 
 /** eye-brightness pulse: standard materials breathe via emissiveIntensity,
@@ -185,6 +190,47 @@ function glbRig(model: THREE.Object3D): Rig | null {
   };
 }
 
+// hy-3d-express bakes a +90°X transform on its root node — the loaded scene
+// already stands upright and faces +z (checked against front/back shots), so
+// no yaw fix-up is needed, only measurement + normalisation.
+/** Wrap the AI GLB in a normalising rig: scale to 1 m tall, feet on y=0,
+ *  facing +z. Returns null when the scene has no usable mesh. */
+function expressRig(model: THREE.Object3D): Rig | null {
+  let meshes = 0;
+  model.traverse((n) => {
+    const m = n as THREE.Mesh;
+    if (!m.isMesh) return;
+    meshes++;
+    m.castShadow = m.receiveShadow = true;
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    for (const mat of mats) {
+      const std = mat as THREE.MeshStandardMaterial;
+      if (std.map) std.map.colorSpace = THREE.SRGBColorSpace;
+      // let the baked-sky environment through — cabin light strips reflect
+      // (scene.environmentIntensity carries the per-scene level)
+      if (std.isMeshStandardMaterial) std.envMapIntensity = 1.0;
+      std.needsUpdate = true;
+    }
+  });
+  if (!meshes) return null;
+
+  const norm = new THREE.Group();
+  norm.add(model);
+  const box = new THREE.Box3().setFromObject(norm);
+  const size = box.getSize(new THREE.Vector3());
+  if (!(size.y > 0)) return null;
+  const s = 1 / size.y;
+  norm.scale.setScalar(s);
+  const c = box.getCenter(new THREE.Vector3());
+  norm.position.set(-c.x * s, -box.min.y * s, -c.z * s);
+
+  const body = new THREE.Group();
+  body.add(norm);
+  const root = new THREE.Group();
+  root.add(body);
+  return { root, body, solid: true };
+}
+
 export function buildRobot(): RobotView {
   const group = new THREE.Group();
 
@@ -204,25 +250,49 @@ export function buildRobot(): RobotView {
   let rig = primitiveRig();
   group.add(rig.root);
 
-  const primitive = rig.root;
-  let src: 'primitive' | 'glb' = 'primitive';
+  let attached = rig.root;
+  let src: 'primitive' | 'glb' | 'express' = 'primitive';
 
   let lean = 0;
   let hover = false;
   let hoverK = 0;
 
-  new GLTFLoader().load(
-    `${import.meta.env.BASE_URL}models/seer.glb`,
+  // 3-level chain: AI model → Blender GLB → primitive (already on screen)
+  const base = import.meta.env.BASE_URL;
+  // seer-express.glb is KHR_draco_mesh_compressed; decoder ships in three's
+  // package, served from public/draco (no new dependency)
+  const draco = new DRACOLoader().setDecoderPath(`${base}draco/`);
+  const loader = new GLTFLoader().setDRACOLoader(draco);
+  const adopt = (r2: Rig, s: 'glb' | 'express'): void => {
+    group.remove(attached);
+    group.add(r2.root);
+    attached = r2.root;
+    rig = r2;
+    src = s;
+  };
+  const loadSeer = (): void => {
+    loader.load(
+      `${base}models/seer.glb`,
+      (g) => {
+        const r2 = glbRig(g.scene);
+        if (r2) adopt(r2, 'glb');
+      },
+      undefined,
+      (e) => console.warn('seer.glb failed to load — keeping primitive robot', e),
+    );
+  };
+  loader.load(
+    `${base}models/seer-express.glb`,
     (g) => {
-      const r2 = glbRig(g.scene);
-      if (!r2) return;
-      group.remove(primitive);
-      group.add(g.scene);
-      rig = r2;
-      src = 'glb';
+      const r2 = expressRig(g.scene);
+      if (r2) adopt(r2, 'express');
+      else loadSeer(); // empty/degenerate GLB — drop to the Blender model
     },
     undefined,
-    (e) => console.warn('seer.glb failed to load — keeping primitive robot', e),
+    (e) => {
+      console.warn('seer-express.glb failed to load — falling back to seer.glb', e);
+      loadSeer();
+    },
   );
 
   return {
@@ -238,6 +308,24 @@ export function buildRobot(): RobotView {
       const run = Math.max(0, Math.min(1, (speed - 2.4) / 2));
       const a = (phase / 0.55) * Math.PI; // one stride per 0.55 m, per leg alternates
       hoverK += ((hover ? 1 : 0) - hoverK) * Math.min(1, dt * 4);
+
+      if (rig.solid) {
+        // monolith mesh — no limbs to articulate, move the whole body:
+        // idle: ±1 cm hover on a 1.6 s cycle + very slow gaze wander;
+        // walk: 3–5° forward lean, per-stride bounce, slight roll sway;
+        // hover: lift 0.15 m
+        const idleK = (1 - gait) * (1 - hoverK);
+        rig.body.position.y =
+          Math.abs(Math.sin(a)) * 0.04 * gait * (1 - hoverK) +
+          Math.sin((t * Math.PI * 2) / 1.6) * 0.01 * idleK +
+          hoverK * 0.15;
+        const wantLean = ((3 + run * 2) * Math.PI / 180) * gait * (1 - hoverK);
+        lean += (wantLean - lean) * Math.min(1, dt * 8);
+        rig.body.rotation.x = lean;
+        rig.body.rotation.z = Math.sin(a) * 0.05 * gait * (1 - hoverK);
+        rig.body.rotation.y = Math.sin(t * 0.45) * 0.1 * idleK;
+        return;
+      }
 
       const swing = Math.sin(a) * (0.7 + run * 0.35) * gait * (1 - hoverK);
       const fold = -0.9 * hoverK; // legs tuck forward/up when hovering

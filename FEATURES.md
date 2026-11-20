@@ -52,8 +52,8 @@ npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measu
 
 | # | 功能 | verify |
 | --- | --- | --- |
-| 4.1 | 主角换成 Blender 程序化生成的 GLB（大圆黑头壳 + 铆钉面罩 + 白发光竖瞳 + 金环 + 波纹管腿 + 大圆脚），`scripts/build-robot.py` 可复现 | `ls -l public/models/seer.glb`（>200 KB）；`grep -n "GLTFLoader\|BASE_URL" src/render/robot.ts`；看 `e2e/shots/robot-{front,mid,back}-844x390.png` |
-| 4.2 | GLB 加载失败降级到 primitive 造型（不白屏），`source` 标记 `'primitive' \| 'glb'` | `grep -n "failed to load — keeping primitive" src/render/robot.ts` |
+| 4.1 | 主角换成 AI 生成 GLB（腾讯混元 hy-3d-express 图生3D，12k 三角面），`seer.glb` 保留为降级层 | `ls -l public/models/seer-express.glb`；`grep -n "expressRig" src/render/robot.ts`；看 `e2e/shots/robot-{front,walk,back,mid}-844x390.png` |
+| 4.2 | 三级降级链：seer-express.glb → seer.glb → primitive 造型（不白屏），`source` 标记 `'primitive' \| 'glb' \| 'express'` | `grep -n "falling back to seer.glb\|keeping primitive" src/render/robot.ts` |
 | 4.3 | 待机眼亮度呼吸 + 身体微起伏；行走波纹管伸缩 + 前倾 3°；悬浮收腿 | `grep -n "eyeGlow\|setHover" src/render/robot.ts src/main.ts` |
 | 4.4 | 截图门槛在 4 核 SwiftShader 下稳定（截图 120 s 超时 + 3 次重试，阈值不动） | `node scripts/measure-look.mjs` → `LOOK OK` |
 | 4.5 | ART-SPEC 记录机器人配色/材质/朝向/面数与实测亮度带 | `grep -n "2.5 主角机器人模型" docs/ART-SPEC.md` |
