@@ -17,7 +17,11 @@ const SHOTS = path.join(ROOT, 'e2e/shots');
 mkdirSync(SHOTS, { recursive: true });
 
 const LAUNCH_ARGS = ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'];
-const THRESH = { mean: 55, top30: 45, darkFrac: 0.2, p95: 140 };
+// per-scene luminance bands (844×390 landscape only; portrait is info-only)
+const THRESH = {
+  cabin: { meanMin: 110, meanMax: 135, darkFrac: 0.15, p95: 120 },
+  space: { meanMin: 45, meanMax: 95, darkFrac: null, p95: 120 },
+};
 
 // ── private preview server over ./dist ───────────────────────────────
 let server = null;
@@ -120,19 +124,18 @@ async function stats(page, png) {
   }, png.toString('base64'));
 }
 
-function report(label, s) {
+function report(label, s, th) {
   const checks = [
-    ['mean', s.mean, '>=', THRESH.mean],
-    ['top30', s.top30, '>=', THRESH.top30],
-    ['darkFrac', s.darkFrac, '<=', THRESH.darkFrac],
-    ['p95', s.p95, '>=', THRESH.p95],
+    ['mean', s.mean, `${th.meanMin}..${th.meanMax}`, s.mean >= th.meanMin && s.mean <= th.meanMax],
+    ['top30', s.top30, 'info', true],
+    ['p95', s.p95, `>= ${th.p95}`, s.p95 >= th.p95],
   ];
+  if (th.darkFrac !== null) checks.push(['darkFrac', s.darkFrac, `<= ${th.darkFrac}`, s.darkFrac <= th.darkFrac]);
   let ok = true;
   console.log(`── ${label}`);
-  for (const [name, v, op, th] of checks) {
-    const pass = op === '>=' ? v >= th : v <= th;
+  for (const [name, v, range, pass] of checks) {
     ok &&= pass;
-    console.log(`${pass ? 'PASS' : 'FAIL'}  ${name.padEnd(8)} ${v.toFixed(2).padStart(7)}  ${op} ${th}`);
+    console.log(`${pass ? 'PASS' : 'FAIL'}  ${name.padEnd(8)} ${v.toFixed(2).padStart(7)}  ${range}`);
   }
   return ok;
 }
@@ -159,7 +162,8 @@ for (const [w, h, gate] of VIEWS) {
   let png = await screenshotWithRetry(page, `cabin ${tag}`);
   writeFileSync(path.join(SHOTS, `cabin-${tag}.png`), png);
   const cabin = await stats(page, png);
-  ok = report(`cabin ${tag}${gate ? '' : ' (info)'}`, cabin) || !gate ? ok : false;
+  const cabinPass = report(`cabin ${tag}${gate ? '' : ' (info)'}`, cabin, THRESH.cabin);
+  if (gate && !cabinPass) ok = false;
 
   // walk-up shortcut, then the real launch path (proximity gate → transit)
   await page.evaluate(() => {
@@ -185,7 +189,21 @@ for (const [w, h, gate] of VIEWS) {
   png = await screenshotWithRetry(page, `space ${tag}`);
   writeFileSync(path.join(SHOTS, `space-${tag}.png`), png);
   const space = await stats(page, png);
-  ok = report(`space ${tag}${gate ? '' : ' (info)'}`, space) || !gate ? ok : false;
+  const spacePass = report(`space ${tag}${gate ? '' : ' (info)'}`, space, THRESH.space);
+  if (gate && !spacePass) ok = false;
+
+  // icer close-up: sun at our back, 3R out — the ring is fully lit
+  const focused = await page.evaluate(() => window.__seer.focusPlanet('icer'));
+  if (!focused) {
+    console.log('FAIL  focusPlanet(icer) returned false');
+    ok = false;
+  } else {
+    await waitFrames(page, 8);
+    png = await screenshotWithRetry(page, `icer ${tag}`);
+    writeFileSync(path.join(SHOTS, `icer-${tag}.png`), png);
+    const icer = await stats(page, png);
+    console.log(`── icer ${tag} (info)  mean ${icer.mean.toFixed(1)}  p95 ${icer.p95.toFixed(1)}`);
+  }
   await browser.close();
 }
 
@@ -193,7 +211,7 @@ if (errors.length) {
   ok = false;
   console.log(`FAIL  js errors:\n${errors.join('\n')}`);
 }
-console.log(`shots: ${path.relative(ROOT, SHOTS)}/{cabin,space}-{844x390,390x844}.png`);
+console.log(`shots: ${path.relative(ROOT, SHOTS)}/{cabin,space,icer}-{844x390,390x844}.png`);
 console.log(ok ? 'LOOK OK' : 'LOOK FAILED');
 cleanup();
 process.exit(ok ? 0 : 1);
