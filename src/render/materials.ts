@@ -13,11 +13,11 @@ export function glow(hex: number, gain = 1.6, opts: THREE.MeshBasicMaterialParam
 }
 
 export const MAT = {
-  /** moulded white plastic shell */
-  hull: std({ color: PAL.hullWhite, roughness: 0.42, metalness: 0.04, side: THREE.DoubleSide }),
-  hullShade: std({ color: PAL.hullShade, roughness: 0.5, metalness: 0.06, side: THREE.DoubleSide }),
+  /** moulded matte plastic shell */
+  hull: std({ color: PAL.hullWhite, roughness: 0.72, metalness: 0.05, side: THREE.DoubleSide }),
+  hullShade: std({ color: PAL.hullShade, roughness: 0.68, metalness: 0.08, side: THREE.DoubleSide }),
   /** brushed alloy trim */
-  metal: std({ color: PAL.panelGrey, roughness: 0.28, metalness: 0.85, side: THREE.DoubleSide }),
+  metal: std({ color: PAL.panelGrey, roughness: 0.3, metalness: 0.85, side: THREE.DoubleSide }),
   metalDark: std({ color: PAL.metalDark, roughness: 0.4, metalness: 0.7, side: THREE.DoubleSide }),
   visor: std({ color: PAL.visor, roughness: 0.08, metalness: 0.6 }),
   cushion: std({ color: 0x4a78d0, roughness: 0.85, metalness: 0 }),

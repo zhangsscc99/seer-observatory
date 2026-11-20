@@ -85,6 +85,8 @@ function applyScene(s: Playable): void {
   robotView.group.visible = !inSpace;
   space.near.visible = inSpace;
   shipView.group.visible = inSpace;
+  // per-scene exposure: the white cabin needs a darker grade than open space
+  renderer.toneMappingExposure = inSpace ? 1.0 : 0.72;
   camera.near = inSpace ? 0.5 : 0.08;
   camera.updateProjectionMatrix();
 }

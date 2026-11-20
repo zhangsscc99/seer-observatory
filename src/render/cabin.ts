@@ -275,6 +275,24 @@ export function buildCabin(): CabinView {
   const ped = buildPedestal();
   group.add(ped.group);
 
+  // contact shadows: soft radial pools grounding seats, consoles, pedestal
+  const shadowTex = radialTexture([[0, 'rgba(8,16,34,0.45)'], [0.55, 'rgba(8,16,34,0.18)'], [1, 'rgba(8,16,34,0)']]);
+  const shadowMat = new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false });
+  const shadowAt = (x: number, z: number, sx: number, sz: number, deg = 0): void => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(sx, sz), shadowMat);
+    m.rotation.x = -Math.PI / 2;
+    m.rotation.z = deg * D2R;
+    m.position.set(x, 0.006, z);
+    group.add(m);
+  };
+  for (const s of seatPositions()) shadowAt(s.x, s.z, 1.15, 1.15);
+  for (const c of CONSOLES) {
+    const mid = (c.a0 + c.a1) / 2;
+    const p = polar(mid, (CABIN.consoleInnerR + CABIN.consoleOuterR) / 2);
+    shadowAt(p.x, p.z, 4.4, 1.9, mid);
+  }
+  shadowAt(CABIN.pedestal.x, CABIN.pedestal.z, 3.0, 3.0);
+
   // light spill: soft additive pools on the floor under each window + glow at the sill
   const spillTex = radialTexture([[0, 'rgba(120,200,255,0.55)'], [0.5, 'rgba(90,150,255,0.18)'], [1, 'rgba(60,110,255,0)']]);
   const spillMat = new THREE.MeshBasicMaterial({ map: spillTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });

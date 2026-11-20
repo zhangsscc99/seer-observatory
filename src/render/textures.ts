@@ -91,7 +91,7 @@ export function floorTextures(R: number): { map: THREE.Texture; emissive: THREE.
   };
 
   // base plating
-  g.fillStyle = '#e9eff5';
+  g.fillStyle = '#ccd6e1';
   g.fillRect(0, 0, S, S);
   e.fillStyle = '#000';
   e.fillRect(0, 0, S, S);
@@ -100,10 +100,10 @@ export function floorTextures(R: number): { map: THREE.Texture; emissive: THREE.
 
   // alternating panel tint by ring band
   const bands: [number, number, string][] = [
-    [2.6, 3.55, '#dfe7ef'],
-    [3.55, 4.75, '#eef3f8'],
-    [4.75, 5.8, '#d5dee8'],
-    [5.8, R, '#e4ebf2'],
+    [2.6, 3.55, '#c2cddb'],
+    [3.55, 4.75, '#d5dde8'],
+    [4.75, 5.8, '#bfcad8'],
+    [5.8, R, '#c7d1df'],
   ];
   for (const [r0, r1, col] of bands) ringSeg(g, r0, r1, 0, 359.99, col);
 
@@ -124,7 +124,7 @@ export function floorTextures(R: number): { map: THREE.Texture; emissive: THREE.
     ring(g, 3.6, 3, '#f6fafd');
   }
   // console footprints: darker plinth shadow
-  for (const k of CONSOLES) ringSeg(g, CABIN.consoleInnerR - 0.12, CABIN.consoleOuterR + 0.1, k.a0 - 1, k.a1 + 1, '#9fb0c4');
+  for (const k of CONSOLES) ringSeg(g, CABIN.consoleInnerR - 0.12, CABIN.consoleOuterR + 0.1, k.a0 - 1, k.a1 + 1, '#8b9cb2');
 
   // seams: concentric + radial
   g.globalAlpha = 0.5;
@@ -142,7 +142,7 @@ export function floorTextures(R: number): { map: THREE.Texture; emissive: THREE.
 
   // ── central platform ─────────────────────────────────────────────
   // outer grille ring (segmented dark vents)
-  ringSeg(g, 1.75, 2.45, 0, 359.99, '#f4f8fb');
+  ringSeg(g, 1.75, 2.45, 0, 359.99, '#dbe4ee');
   for (let a = 0; a < 360; a += 30) {
     ringSeg(g, 1.85, 2.35, a + 3, a + 27, '#566579');
     ringSeg(r, 1.85, 2.35, a + 3, a + 27, '#b0b0b0');
@@ -183,9 +183,9 @@ export function floorTextures(R: number): { map: THREE.Texture; emissive: THREE.
     }
     ring(ctx, 1.1, 1.5, 'rgba(56,225,255,0.7)');
   }
-  ring(g, 1.55, 4, '#f6fafd');
+  ring(g, 1.55, 4, '#eef3f9');
   // hub
-  ringSeg(g, 0, 0.62, 0, 359.99, '#f4f8fb');
+  ringSeg(g, 0, 0.62, 0, 359.99, '#dbe4ee');
   for (const ctx of [g, e]) ring(ctx, 0.45, 3, css(PAL.tealAccent));
   ring(g, 0.62, 3, '#9fb0c4');
 
@@ -205,7 +205,7 @@ export function floorTextures(R: number): { map: THREE.Texture; emissive: THREE.
   const pz = cy + CABIN.pedestal.z * m;
   g.beginPath();
   g.arc(cx, pz, 1.5 * m, 0, 7);
-  g.fillStyle = '#d5dee8';
+  g.fillStyle = '#bfcad8';
   g.fill();
   for (const ctx of [g, e]) {
     ctx.beginPath();

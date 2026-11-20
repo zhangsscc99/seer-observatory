@@ -1,7 +1,7 @@
 // Single source of colour truth — see docs/ART-SPEC.md §1.
 export const PAL = {
-  hullWhite: 0xf2f6fa,
-  hullShade: 0xc9d4e0,
+  hullWhite: 0xdfe7f0,
+  hullShade: 0xb4c2d2,
   panelGrey: 0x8e9db0,
   metalDark: 0x3a475a,
   visor: 0x0c1b33,
