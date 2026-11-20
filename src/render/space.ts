@@ -23,25 +23,27 @@ void main() {
 
 // lit surface + inner fresnel rim tinted by the atmosphere
 const PLANET_FRAG = /* glsl */ `
-uniform sampler2D uMap; uniform vec3 uSun; uniform vec3 uAtmo; uniform float uGlow;
+uniform sampler2D uMap; uniform vec3 uSun; uniform vec3 uAtmo; uniform float uGlow; uniform float uSpec;
 varying vec3 vN; varying vec3 vW; varying vec2 vUv;
 void main() {
   vec3 n = normalize(vN);
   vec3 v = normalize(cameraPosition - vW);
   float ndl = dot(n, uSun);
-  float day = smoothstep(-0.25, 0.6, ndl);
+  float day = smoothstep(-0.06, 0.30, ndl);
   vec3 albedo = texture2D(uMap, vUv).rgb;
-  vec3 col = albedo * (0.16 + 1.25 * day);
+  vec3 col = albedo * (0.10 + 0.92 * day);
   col += albedo * uGlow * (1.0 - day) * smoothstep(0.55, 1.0, albedo.r); // night-side emissive (lava)
+  float spec = pow(max(dot(n, normalize(v + uSun)), 0.0), 48.0) * 0.18 * day;
+  col += vec3(spec) * uSpec; // ice/gas only — lava stays matte
   float fres = pow(1.0 - max(dot(n, v), 0.0), 2.6);
-  col += uAtmo * fres * (0.25 + 0.75 * smoothstep(-0.5, 0.5, ndl));
+  col += uAtmo * fres * smoothstep(-0.35, 0.30, ndl);
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
 
 // outer halo shell (BackSide, additive): peaks at the planet limb, fades
-// outward. Night side decays to 20%; the terminator scatters ~8% warmer.
+// outward. Lit side only (no baseline); the terminator scatters ~8% warmer.
 const HALO_FRAG = /* glsl */ `
 uniform vec3 uSun; uniform vec3 uAtmo; uniform float uEdge; uniform float uPow; uniform float uGain;
 varying vec3 vN; varying vec3 vW;
@@ -51,7 +53,7 @@ void main() {
   float d = clamp(-dot(n, v) / uEdge, 0.0, 1.0);
   float a = pow(d, uPow);
   float ndl = dot(n, uSun);
-  float lit = 0.2 + 0.8 * smoothstep(-0.6, 0.4, ndl);
+  float lit = smoothstep(-0.35, 0.30, ndl);
   float term = smoothstep(0.25, 0.85, 1.0 - abs(ndl));
   vec3 tint = mix(uAtmo, uAtmo * vec3(1.08, 1.0, 0.92), term);
   gl_FragColor = vec4(tint * a * lit * uGain, 1.0);
@@ -113,17 +115,23 @@ function buildPlanet(p: PlanetDef): THREE.Group {
     new THREE.ShaderMaterial({
       vertexShader: PLANET_VERT,
       fragmentShader: PLANET_FRAG,
-      uniforms: { uMap: { value: planetTexture(p) }, uSun: { value: sunDir }, uAtmo: { value: atmo }, uGlow: { value: p.kind === 'lava' ? 0.9 : 0 } },
+      uniforms: {
+        uMap: { value: planetTexture(p) },
+        uSun: { value: sunDir },
+        uAtmo: { value: atmo },
+        uGlow: { value: p.kind === 'lava' ? 0.9 : 0 },
+        uSpec: { value: p.kind === 'ice-ring' || p.kind === 'ice' || p.kind === 'gas' ? 1 : 0 },
+      },
     }),
   );
   surface.name = 'surface';
   surface.rotation.z = 0.25;
-  const halo = haloShell(p, HALO_SCALE, 3.2, 0.8, atmo);
+  const halo = haloShell(p, HALO_SCALE, 3.2, 0.45, atmo);
   g.add(surface, halo);
   const timeMats: THREE.ShaderMaterial[] = [];
   if (p.kind === 'ice-ring') {
     // dual halo: narrow bright rim (sharper peak) inside the wide mist
-    g.add(haloShell(p, HALO_SCALE_NARROW, 6.0, 1.0, atmo));
+    g.add(haloShell(p, HALO_SCALE_NARROW, 6.0, 0.5, atmo));
     // low-temperature frost veil on the sun side
     const frost = new THREE.Mesh(
       new THREE.SphereGeometry(p.radius * FROST_SCALE, 48, 32),

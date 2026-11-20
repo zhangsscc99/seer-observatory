@@ -11,6 +11,8 @@ export const RING_INNER = 1.5; // × planet radius
 export const RING_OUTER = 2.35;
 const TILT_X = (17 * Math.PI) / 180;
 const TILT_Z = (9 * Math.PI) / 180;
+/** ring-plane orientation in world space (ring local XZ → world) */
+export const RING_QUAT = new THREE.Quaternion().setFromEuler(new THREE.Euler(TILT_X, 0, TILT_Z));
 
 const RING_VERT = /* glsl */ `
 varying vec3 vLocal; varying vec3 vW;
@@ -43,9 +45,9 @@ void main() {
   float band = 0.52 * vnoise(t * 6.0 + 3.1)
              + 0.30 * vnoise(t * 15.0 + 17.7)
              + 0.18 * vnoise(t * 37.0 + 41.3);
-  float alpha = (0.28 + 0.62 * band) * (0.85 + 0.15 * vnoise(t * 90.0 + 7.7));
+  float alpha = (0.15 + 0.75 * band) * (0.85 + 0.15 * vnoise(t * 90.0 + 7.7));
 
-  // Cassini division: t in 0.58..0.66 pressed to ≤0.06, 0.01 smooth edges
+  // Cassini division: t in 0.58..0.66 pressed to ~0, 0.01 smooth edges
   float cass = smoothstep(0.57, 0.58, t) * (1.0 - smoothstep(0.66, 0.67, t));
 
   // colour ramp deep → mid → bright, outermost fading to white
@@ -61,23 +63,23 @@ void main() {
   col += uCol2 * fwd * 0.9;
   alpha += fwd * 0.25;
 
-  // planet umbra: anti-sun arc |perp| < R behind the disc → ×0.35
+  // planet umbra: anti-sun arc |perp| < R behind the disc → ×0.18
   vec2 ax = normalize(uSunL.xz + vec2(1e-5, 0.0));
   float along = dot(vLocal.xz, ax);
   float perp = abs(vLocal.x * ax.y - vLocal.z * ax.x);
   float umbra = smoothstep(-uRadius * 0.1, uRadius * 0.35, -along)
               * (1.0 - smoothstep(uRadius * 0.92, uRadius * 1.05, perp));
-  col *= 1.0 - 0.65 * umbra;
+  col *= 1.0 - 0.82 * umbra;
 
   // ice crystals: sparse rotating grain, threshold + pow, emissive tint
   float ang = atan(vLocal.z, vLocal.x) + uTime * 0.05;
   float sp = hash2(floor(vec2(ang * 60.0, t * 240.0)));
-  float sparkle = pow(max(sp - 0.985, 0.0) / 0.015, 4.0);
+  float sparkle = pow(max(sp - 0.97, 0.0) / 0.03, 3.0);
   col += uCol2 * sparkle * (0.9 + 0.6 * fwd) * (1.0 - cass * 0.9);
 
-  // inner/outer edges fade over 0.06 of the band; gap pressed last
+  // inner/outer edges fade over 0.06 of the band; gap pressed last (to ~0)
   alpha *= smoothstep(0.0, 0.06, t) * (1.0 - smoothstep(0.94, 1.0, t));
-  alpha = min(alpha, 1.0) * (1.0 - 0.94 * cass);
+  alpha = min(alpha, 1.0) * (1.0 - cass);
 
   gl_FragColor = vec4(col, alpha);
   #include <tonemapping_fragment>
@@ -89,7 +91,7 @@ void main() {
 export function buildRings(p: PlanetDef): THREE.Group {
   const g = new THREE.Group();
   g.name = 'rings';
-  g.rotation.set(TILT_X, 0, TILT_Z);
+  g.quaternion.copy(RING_QUAT);
 
   const inner = p.radius * RING_INNER;
   const outer = p.radius * RING_OUTER;

@@ -192,7 +192,8 @@ for (const [w, h, gate] of VIEWS) {
   const spacePass = report(`space ${tag}${gate ? '' : ' (info)'}`, space, THRESH.space);
   if (gate && !spacePass) ok = false;
 
-  // icer close-up: sun at our back, 3R out — the ring is fully lit
+  // icer close-up: 3/4 view at 3.2R, 12° above the ring plane — terminator,
+  // Cassini division and the anti-sun umbra arc should all read
   const focused = await page.evaluate(() => window.__seer.focusPlanet('icer'));
   if (!focused) {
     console.log('FAIL  focusPlanet(icer) returned false');

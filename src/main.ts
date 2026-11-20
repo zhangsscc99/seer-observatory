@@ -16,6 +16,7 @@ import { Hud } from './render/hud.ts';
 import { buildRobot } from './render/robot.ts';
 import { buildShip } from './render/ship.ts';
 import { bakeSky, makeStars } from './render/sky.ts';
+import { RING_QUAT } from './render/rings.ts';
 import { buildSpace } from './render/space.ts';
 
 declare global {
@@ -418,14 +419,31 @@ window.__seer = {
   launch: tryLaunch,
   dock: tryDock,
   info: () => renderer.info.render,
-  /** e2e/debug: teleport the ship to 3R of a planet, sun at our back, facing it */
+  /** e2e/debug: teleport the ship near a planet, facing it. Ice-ring planets
+   *  get a 3/4 view: 3.2R out, 12° above the ring plane, ~60° off the
+   *  anti-sun azimuth so the terminator cuts the disc and the umbra arc
+   *  lands on the near ring. Other planets: 3R out, sun at our back. */
   focusPlanet(id: string) {
     const p = planetById(id);
     if (!p || mode.mode !== 'space') return false;
-    const dist = p.radius * 3;
-    ship.pos.x = p.pos.x + SUN_DIR.x * dist;
-    ship.pos.y = p.pos.y + SUN_DIR.y * dist;
-    ship.pos.z = p.pos.z + SUN_DIR.z * dist;
+    const dir = new THREE.Vector3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z);
+    let dist = p.radius * 3;
+    if (p.kind === 'ice-ring') {
+      dist = p.radius * 3.2;
+      const n = new THREE.Vector3(0, 1, 0).applyQuaternion(RING_QUAT);
+      const a = dir.clone().negate().addScaledVector(n, dir.dot(n)).normalize();
+      const t = new THREE.Vector3().crossVectors(n, a);
+      const az = (60 * Math.PI) / 180;
+      const el = (12 * Math.PI) / 180;
+      dir.copy(a)
+        .multiplyScalar(Math.cos(az))
+        .addScaledVector(t, Math.sin(az))
+        .multiplyScalar(Math.cos(el))
+        .addScaledVector(n, Math.sin(el));
+    }
+    ship.pos.x = p.pos.x + dir.x * dist;
+    ship.pos.y = p.pos.y + dir.y * dist;
+    ship.pos.z = p.pos.z + dir.z * dist;
     const fx = p.pos.x - ship.pos.x;
     const fy = p.pos.y - ship.pos.y;
     const fz = p.pos.z - ship.pos.z;
