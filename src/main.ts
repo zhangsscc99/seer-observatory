@@ -59,7 +59,7 @@ const sfx = new Sfx();
 const controls = new Controls(canvas);
 let started = false;
 
-const cam = { yaw: 0, pitch: 0.3, shipYaw: 0, shipPitch: 0 };
+const cam = { yaw: 0, pitch: 0.3, zoom: 1, shipYaw: 0, shipPitch: 0 };
 const CAM_PITCH_MIN = 0.14;
 const CAM_PITCH_MAX = 1.15;
 
@@ -191,6 +191,7 @@ function updateCabin(dt: number, active: boolean): void {
   }
   robotView.group.position.set(robot.x, 0, robot.z);
   robotView.group.rotation.y = robot.heading;
+  robotView.setHover(mode.thrust > 0.01); // legs retract while the launch burn runs
   robotView.animate(robot.walkPhase, robot.speed, time, dt);
 
   const near = canLaunch();
@@ -208,7 +209,7 @@ function updateCabin(dt: number, active: boolean): void {
   const tx = robot.x;
   const ty = 0.66;
   const tz = robot.z;
-  let dist = (portrait ? 3.3 : 2.9) * (1 - ease * 0.35);
+  let dist = (portrait ? 3.3 : 2.9) * cam.zoom * (1 - ease * 0.35);
   const cp = Math.cos(cam.pitch);
   const dx = Math.sin(cam.yaw) * cp;
   const dy = Math.sin(cam.pitch);
@@ -293,6 +294,7 @@ requestAnimationFrame(frame);
 window.__seer = {
   mode,
   robot,
+  robotView,
   controls,
   sfx,
   get ship() {

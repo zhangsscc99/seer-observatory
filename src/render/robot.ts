@@ -1,21 +1,60 @@
-// Seer-style robot built from primitives: round white shell, dark visor,
-// cyan glowing eyes/joints. ~0.8 m tall, chunky cartoon proportions.
-// The model faces local +z; origin at the feet.
+// Seer robot view: loads the Blender-built GLB (public/models/seer.glb) and
+// falls back to a primitive-built lookalike while it loads or if it fails —
+// never a blank screen. The model faces local +z; origin at the feet.
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MAT, glow } from './materials.ts';
 import { PAL } from './palette.ts';
 import { radialTexture } from './textures.ts';
 
 export interface RobotView {
   group: THREE.Group;
+  /** 'glb' once the Blender model is in, 'primitive' while pending/failed */
+  readonly source: 'primitive' | 'glb';
   /** phase: metres walked; speed: m/s; t: seconds */
   animate(phase: number, speed: number, t: number, dt: number): void;
+  /** tuck the telescoping legs and float (launch cinematic) */
+  setHover(on: boolean): void;
 }
 
-export function buildRobot(): RobotView {
-  const group = new THREE.Group();
+/** animation targets shared by both rigs */
+interface Rig {
+  root: THREE.Object3D;
+  body: THREE.Object3D;
+  head?: THREE.Object3D;
+  armL?: THREE.Object3D;
+  armR?: THREE.Object3D;
+  legL?: THREE.Object3D;
+  legR?: THREE.Object3D;
+  legTubeL?: THREE.Object3D;
+  legTubeR?: THREE.Object3D;
+  antenna?: { o: THREE.Object3D; rest: THREE.Euler };
+  eye?: { o: THREE.Object3D; y: number };
+  tip?: { o: THREE.Object3D; s: number };
+  core?: { o: THREE.Object3D; s: number };
+  /** glowing-eye breathing: pulse emissiveIntensity (std) or colour (basic) */
+  eyeGlow?: { mat: THREE.Material; base: number; baseColor?: THREE.Color };
+}
+
+/** eye-brightness pulse: standard materials breathe via emissiveIntensity,
+ *  the primitive fallback's MeshBasicMaterial via colour gain. */
+function bindGlow(mat: THREE.Material | undefined): Rig['eyeGlow'] {
+  if (!mat) return undefined;
+  const std = mat as THREE.MeshStandardMaterial;
+  if (std.emissiveIntensity !== undefined && std.emissiveIntensity > 0) {
+    return { mat, base: std.emissiveIntensity };
+  }
+  const basic = mat as THREE.MeshBasicMaterial;
+  if (basic.isMeshBasicMaterial) return { mat, base: 0, baseColor: basic.color.clone() };
+  return undefined;
+}
+
+const pick = (root: THREE.Object3D, name: string): THREE.Object3D | undefined => root.getObjectByName(name);
+
+function primitiveRig(): Rig {
+  const root = new THREE.Group();
   const body = new THREE.Group();
-  group.add(body);
+  root.add(body);
   const eyeMat = glow(PAL.cyan, 2.0);
   const jointMat = glow(PAL.cyan, 1.3);
 
@@ -60,13 +99,16 @@ export function buildRobot(): RobotView {
     earLight.position.set(sx * 0.255, 0, 0);
     head.add(eye, ear, earLight);
   }
+  const antenna = new THREE.Group();
+  antenna.position.y = 0.22;
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.012, 0.12, 8), MAT.metal);
-  mast.position.y = 0.25;
+  mast.position.y = 0.03;
   const tip = new THREE.Mesh(new THREE.SphereGeometry(0.028, 12, 10), eyeMat);
-  tip.position.y = 0.32;
+  tip.position.y = 0.1;
+  antenna.add(mast, tip);
   const crest = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.26), MAT.hullShade);
   crest.position.y = 0.2;
-  head.add(skull, visor, mast, tip, crest);
+  head.add(skull, visor, antenna, crest);
   body.add(head);
 
   // limbs — pivots at shoulder / hip
@@ -97,7 +139,56 @@ export function buildRobot(): RobotView {
   const legR = limb(0.09, 0.17, 0.035, 0.05, true);
   body.add(armL, armR, legL, legR);
 
-  // contact shadow blob
+  const eyes = head.children.filter((c) => c.name === 'eye');
+  return {
+    root, body, head, armL, armR, legL, legR,
+    antenna: { o: antenna, rest: antenna.rotation.clone() },
+    eye: { o: eyes[0], y: 1.25 },
+    tip: { o: tip, s: 1 },
+    core: { o: chest, s: 1 },
+    eyeGlow: bindGlow(eyeMat),
+  };
+}
+
+/** Bind the GLB scene graph to a rig. Returns null if key nodes are missing. */
+function glbRig(model: THREE.Object3D): Rig | null {
+  const body = pick(model, 'body');
+  if (!body) return null;
+  const eyeO = pick(model, 'eye');
+  const tipO = pick(model, 'tip');
+  const coreO = pick(model, 'core');
+  const antO = pick(model, 'antenna');
+  let eyeMat: THREE.Material | undefined;
+  (eyeO ?? model).traverse((n) => {
+    const m = n as THREE.Mesh;
+    const mm = m.material as THREE.MeshStandardMaterial;
+    if (!eyeMat && m.isMesh && mm.emissive && mm.emissiveIntensity &&
+        mm.emissive.r + mm.emissive.g + mm.emissive.b > 0) {
+      eyeMat = mm;
+    }
+  });
+  return {
+    root: model,
+    body,
+    head: pick(model, 'head'),
+    armL: pick(model, 'arm_L'),
+    armR: pick(model, 'arm_R'),
+    legL: pick(model, 'leg_L'),
+    legR: pick(model, 'leg_R'),
+    legTubeL: pick(model, 'leg_tube_L'),
+    legTubeR: pick(model, 'leg_tube_R'),
+    antenna: antO ? { o: antO, rest: antO.rotation.clone() } : undefined,
+    eye: eyeO ? { o: eyeO, y: eyeO.scale.y } : undefined,
+    tip: tipO ? { o: tipO, s: tipO.scale.x } : undefined,
+    core: coreO ? { o: coreO, s: coreO.scale.x } : undefined,
+    eyeGlow: bindGlow(eyeMat),
+  };
+}
+
+export function buildRobot(): RobotView {
+  const group = new THREE.Group();
+
+  // contact shadow blob — stays whatever the rig is
   const shadow = new THREE.Mesh(
     new THREE.PlaneGeometry(0.95, 0.95),
     new THREE.MeshBasicMaterial({
@@ -110,30 +201,87 @@ export function buildRobot(): RobotView {
   shadow.renderOrder = 1;
   group.add(shadow);
 
-  const eyes = head.children.filter((c) => c.name === 'eye');
+  let rig = primitiveRig();
+  group.add(rig.root);
+
+  const primitive = rig.root;
+  let src: 'primitive' | 'glb' = 'primitive';
+
   let lean = 0;
+  let hover = false;
+  let hoverK = 0;
+
+  new GLTFLoader().load(
+    `${import.meta.env.BASE_URL}models/seer.glb`,
+    (g) => {
+      const r2 = glbRig(g.scene);
+      if (!r2) return;
+      group.remove(primitive);
+      group.add(g.scene);
+      rig = r2;
+      src = 'glb';
+    },
+    undefined,
+    (e) => console.warn('seer.glb failed to load — keeping primitive robot', e),
+  );
 
   return {
     group,
+    get source() {
+      return src;
+    },
+    setHover(on) {
+      hover = on;
+    },
     animate(phase, speed, t, dt) {
       const gait = Math.min(1, speed / 2.2);
       const run = Math.max(0, Math.min(1, (speed - 2.4) / 2));
       const a = (phase / 0.55) * Math.PI; // one stride per 0.55 m, per leg alternates
-      const swing = Math.sin(a) * (0.7 + run * 0.35) * gait;
-      legL.rotation.x = swing;
-      legR.rotation.x = -swing;
-      armL.rotation.x = -swing * 0.9;
-      armR.rotation.x = swing * 0.9;
+      hoverK += ((hover ? 1 : 0) - hoverK) * Math.min(1, dt * 4);
+
+      const swing = Math.sin(a) * (0.7 + run * 0.35) * gait * (1 - hoverK);
+      const fold = -0.9 * hoverK; // legs tuck forward/up when hovering
+      if (rig.legL) {
+        rig.legL.rotation.x = swing + fold;
+        rig.legL.scale.y = 1 - hoverK * 0.5;
+      }
+      if (rig.legR) {
+        rig.legR.rotation.x = -swing + fold;
+        rig.legR.scale.y = 1 - hoverK * 0.5;
+      }
+      // bellows stretch: each tube lengthens as its leg swings forward
+      if (rig.legTubeL) rig.legTubeL.scale.y = 1 + 0.14 * gait * (0.5 + 0.5 * Math.sin(a)) * (1 - hoverK);
+      if (rig.legTubeR) rig.legTubeR.scale.y = 1 + 0.14 * gait * (0.5 - 0.5 * Math.sin(a)) * (1 - hoverK);
+      const armFold = 0.5 * hoverK;
+      if (rig.armL) rig.armL.rotation.x = -swing * 0.9 + armFold;
+      if (rig.armR) rig.armR.rotation.x = swing * 0.9 + armFold;
+
       const idle = Math.sin(t * 2.2) * 0.008;
-      body.position.y = Math.abs(Math.cos(a)) * 0.035 * gait + idle * (1 - gait);
-      lean += ((0.1 + run * 0.16) * gait - lean) * Math.min(1, dt * 8);
-      body.rotation.x = lean;
-      head.rotation.y = Math.sin(t * 0.7) * 0.12 * (1 - gait);
-      head.rotation.x = -lean * 0.6;
-      // blink
-      const blink = t % 3.7 < 0.12 ? 0.15 : 1;
-      for (const e of eyes) e.scale.y = 1.25 * blink;
-      tip.scale.setScalar(1 + 0.25 * Math.sin(t * 5));
+      rig.body.position.y =
+        Math.abs(Math.cos(a)) * 0.035 * gait * (1 - hoverK) +
+        idle * (1 - gait) +
+        hoverK * (0.1 + Math.sin(t * 1.6) * 0.025);
+      lean += ((0.05 + run * 0.14) * gait * (1 - hoverK) - lean) * Math.min(1, dt * 8);
+      rig.body.rotation.x = lean;
+      if (rig.head) {
+        rig.head.rotation.y = Math.sin(t * 0.7) * 0.12 * (1 - gait);
+        rig.head.rotation.x = -lean * 0.6;
+      }
+      if (rig.antenna) {
+        rig.antenna.o.rotation.x = rig.antenna.rest.x + Math.sin(t * 1.9) * 0.08;
+      }
+
+      // blink — eye strip squashes vertically
+      if (rig.eye) rig.eye.o.scale.y = rig.eye.y * (t % 3.7 < 0.12 ? 0.15 : 1);
+      // eye glow breathing
+      if (rig.eyeGlow) {
+        const b = 0.78 + 0.28 * Math.sin(t * 2.0);
+        const m = rig.eyeGlow.mat as THREE.MeshStandardMaterial;
+        if (m.emissiveIntensity !== undefined) m.emissiveIntensity = rig.eyeGlow.base * b;
+        else (m as unknown as THREE.MeshBasicMaterial).color.copy(rig.eyeGlow.baseColor!).multiplyScalar(b);
+      }
+      if (rig.tip) rig.tip.o.scale.setScalar(rig.tip.s * (1 + 0.25 * Math.sin(t * 5)));
+      if (rig.core) rig.core.o.scale.setScalar(rig.core.s * (1 + 0.08 * Math.sin(t * 2.6)));
     },
   };
 }

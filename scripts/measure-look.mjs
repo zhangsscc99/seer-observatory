@@ -76,6 +76,18 @@ const waitFrames = async (page, n) => {
   }
 };
 
+async function screenshotWithRetry(page, label) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await page.screenshot({ timeout: 120000 });
+    } catch (e) {
+      if (attempt === 3) throw e;
+      console.log(`screenshot ${label} attempt ${attempt}/3 failed: ${String(e).split('\n')[0]}`);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+}
+
 async function stats(page, png) {
   return page.evaluate(async (b64) => {
     const img = new Image();
@@ -144,7 +156,7 @@ for (const [w, h, gate] of VIEWS) {
     process.exit(1);
   }
   await waitFrames(page, 12);
-  let png = await page.screenshot();
+  let png = await screenshotWithRetry(page, `cabin ${tag}`);
   writeFileSync(path.join(SHOTS, `cabin-${tag}.png`), png);
   const cabin = await stats(page, png);
   ok = report(`cabin ${tag}${gate ? '' : ' (info)'}`, cabin) || !gate ? ok : false;
@@ -169,7 +181,7 @@ for (const [w, h, gate] of VIEWS) {
     ok = false;
   }
   await waitFrames(page, 10);
-  png = await page.screenshot();
+  png = await screenshotWithRetry(page, `space ${tag}`);
   writeFileSync(path.join(SHOTS, `space-${tag}.png`), png);
   const space = await stats(page, png);
   ok = report(`space ${tag}${gate ? '' : ' (info)'}`, space) || !gate ? ok : false;

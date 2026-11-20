@@ -9,7 +9,7 @@ var CABIN = {
   wallR: 7.2,
   /** walkable boundary for collision */
   boundR: 6.85,
-  ceilingY: 3.4,
+  ceilingY: 4.2,
   skylightR: 2.7,
   /** console cross-section radii */
   consoleInnerR: 4.75,
