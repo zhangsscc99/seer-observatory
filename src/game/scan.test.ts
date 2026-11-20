@@ -101,5 +101,7 @@ test('sector data: every TARGET resolves, hazards assigned per design', () => {
   assert.equal(planetById('helka')!.hazard, 'wind');
   assert.equal(planetById('seron')!.hazard, 'cold');
   assert.equal(planetById('volc')!.hazard, 'radiation');
+  assert.equal(planetById('icer')!.hazard, 'cold');
+  assert.equal(scanResult('icer').resource, '氦-3 冰芯');
   assert.ok(PLANETS.length === TARGETS.length);
 });

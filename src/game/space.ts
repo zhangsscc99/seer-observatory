@@ -28,6 +28,7 @@ export const PLANETS: readonly PlanetDef[] = [
   { id: 'helka', name: '赫尔卡星', pos: { x: 640, y: 130, z: -260 }, radius: 110, hazard: 'wind', colors: [0x5a2a8a, 0xd8742c, 0xffe2a8], atmosphere: 0xffa85e, kind: 'gas', seed: 23 },
   { id: 'seron', name: '塞西利亚星', pos: { x: -560, y: -60, z: 330 }, radius: 80, hazard: 'cold', colors: [0x7fb8e8, 0xcfeaff, 0xffffff], atmosphere: 0xa8f0ff, kind: 'ice', seed: 37 },
   { id: 'volc', name: '火山星', pos: { x: 330, y: -150, z: 700 }, radius: 95, hazard: 'radiation', colors: [0x40121a, 0xc23a1e, 0xffc24a], atmosphere: 0xff6a4a, kind: 'lava', seed: 41 },
+  { id: 'icer', name: '冰环带', pos: { x: -80, y: 120, z: -1180 }, radius: 120, hazard: 'cold', colors: [0x8fd0f2, 0xe8f7ff, 0xffffff], atmosphere: 0x9fe6ff, kind: 'ice-ring', seed: 53 },
 ];
 
 export function planetById(id: string): PlanetDef | undefined {

@@ -56,6 +56,7 @@ const RESOURCE_BY_ID: Record<string, string> = {
   helka: '氦气罐',
   seron: '冰晶',
   volc: '硫化物',
+  icer: '氦-3 冰芯',
 };
 
 const LOG_BY_ID: Record<string, string> = {
@@ -63,6 +64,7 @@ const LOG_BY_ID: Record<string, string> = {
   helka: '高层大气氦浓度偏高，风带湍急但采集窗口充足。',
   seron: '极冠冰层纯净透亮，冰晶晶格完整，适合长期封存。',
   volc: '岩浆活动频繁，喷口周边富集硫化物结晶信号。',
+  icer: '环带冰粒纯净，芯部氦-3丰度极高，卡西尼缝边缘结晶完整。',
 };
 
 const GENERIC_LOGS: readonly string[] = [
