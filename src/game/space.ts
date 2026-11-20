@@ -1,6 +1,7 @@
 // Space sector layout — pure data + deterministic asteroid belt generation.
 // The observatory station sits at the origin; the bow (-z) faces planet Kelos.
 import { mulberry32 } from './rng.ts';
+import type { HazardKind } from './scan.ts';
 
 export interface Vec3 {
   x: number;
@@ -13,20 +14,28 @@ export interface PlanetDef {
   name: string;
   pos: Vec3;
   radius: number;
+  hazard?: HazardKind;
   /** surface palette: [deep, mid, bright] hex */
   colors: [number, number, number];
   atmosphere: number;
   /** texture recipe */
-  kind: 'ocean' | 'gas' | 'ice' | 'lava';
+  kind: 'ocean' | 'gas' | 'ice' | 'lava' | 'ice-ring';
   seed: number;
 }
 
 export const PLANETS: readonly PlanetDef[] = [
   { id: 'kelos', name: '克洛斯星', pos: { x: -260, y: 40, z: -620 }, radius: 150, colors: [0x0b3a8a, 0x1f8f6a, 0xdff6ff], atmosphere: 0x62c8ff, kind: 'ocean', seed: 11 },
-  { id: 'helka', name: '赫尔卡星', pos: { x: 640, y: 130, z: -260 }, radius: 110, colors: [0x5a2a8a, 0xd8742c, 0xffe2a8], atmosphere: 0xffa85e, kind: 'gas', seed: 23 },
-  { id: 'seron', name: '塞西利亚星', pos: { x: -560, y: -60, z: 330 }, radius: 80, colors: [0x7fb8e8, 0xcfeaff, 0xffffff], atmosphere: 0xa8f0ff, kind: 'ice', seed: 37 },
-  { id: 'volc', name: '火山星', pos: { x: 330, y: -150, z: 700 }, radius: 95, colors: [0x40121a, 0xc23a1e, 0xffc24a], atmosphere: 0xff6a4a, kind: 'lava', seed: 41 },
+  { id: 'helka', name: '赫尔卡星', pos: { x: 640, y: 130, z: -260 }, radius: 110, hazard: 'wind', colors: [0x5a2a8a, 0xd8742c, 0xffe2a8], atmosphere: 0xffa85e, kind: 'gas', seed: 23 },
+  { id: 'seron', name: '塞西利亚星', pos: { x: -560, y: -60, z: 330 }, radius: 80, hazard: 'cold', colors: [0x7fb8e8, 0xcfeaff, 0xffffff], atmosphere: 0xa8f0ff, kind: 'ice', seed: 37 },
+  { id: 'volc', name: '火山星', pos: { x: 330, y: -150, z: 700 }, radius: 95, hazard: 'radiation', colors: [0x40121a, 0xc23a1e, 0xffc24a], atmosphere: 0xff6a4a, kind: 'lava', seed: 41 },
 ];
+
+export function planetById(id: string): PlanetDef | undefined {
+  return PLANETS.find((p) => p.id === id);
+}
+
+/** scan-selectable bodies in this sector */
+export const TARGETS: readonly string[] = PLANETS.map((p) => p.id);
 
 /** unit direction from the origin toward the sun */
 export const SUN_DIR: Vec3 = (() => {

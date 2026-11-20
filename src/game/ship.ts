@@ -68,7 +68,7 @@ export class Ship {
     return clamp(this.speed / SHIP.boostSpeed, 0, 1);
   }
 
-  update(dt: number, input: FlightInput, bodies: readonly Body[] = [], sectorR = Infinity): void {
+  update(dt: number, input: FlightInput, bodies: readonly Body[] = [], sectorR = Infinity, energyMul = 1): void {
     const ks = damp(SHIP.steerLag, dt);
     this.steerX += (clamp(input.steerX, -1, 1) - this.steerX) * ks;
     this.steerY += (clamp(input.steerY, -1, 1) - this.steerY) * ks;
@@ -99,7 +99,7 @@ export class Ship {
       this.energy = Math.max(0, this.energy - SHIP.energyDrain * dt);
       if (this.energy === 0) this.depleted = true;
     } else {
-      this.energy = Math.min(SHIP.energyMax, this.energy + SHIP.energyRegen * dt);
+      this.energy = Math.min(SHIP.energyMax, this.energy + SHIP.energyRegen * energyMul * dt);
     }
 
     const target = input.brake ? SHIP.brakeSpeed : this.boosting ? SHIP.boostSpeed : SHIP.cruise;

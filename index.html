@@ -48,6 +48,7 @@
       }
       #mute { right: calc(12px + var(--sr)); top: calc(12px + var(--st)); width: 48px; height: 48px; font-size: 20px; }
       #dock { right: calc(70px + var(--sr)); top: calc(12px + var(--st)); height: 48px; padding: 0 16px; font-size: 14px; }
+      #archBtn { right: calc(180px + var(--sr)); top: calc(12px + var(--st)); height: 48px; padding: 0 16px; font-size: 14px; }
       #act {
         right: calc(26px + var(--sr)); bottom: calc(40px + var(--sb)); width: 104px; height: 104px; font-size: 22px;
         border-color: var(--teal); box-shadow: 0 0 22px rgba(47, 230, 184, 0.8), inset 0 0 16px rgba(47, 230, 184, 0.4);
@@ -66,6 +67,67 @@
       #energy { margin-top: 6px; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
       #energy i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--teal), var(--cyan)); transform-origin: left; }
       #energy.low i { background: #ff9d5c; }
+      #warn {
+        left: 50%; transform: translateX(-50%); top: calc(76px + var(--st)); z-index: 8;
+        max-width: min(74vw, 620px); padding: 8px 18px; border-radius: 999px; font-size: 13px; font-weight: 700;
+        text-align: center; white-space: nowrap; background: rgba(8, 38, 62, 0.82); backdrop-filter: blur(5px);
+      }
+      #warn.cyan { color: #d9fbff; border: 1px solid rgba(56, 225, 255, 0.85); box-shadow: 0 0 18px rgba(56, 225, 255, 0.35); }
+      #warn.gold { color: #fff4cf; border: 1px solid rgba(255, 204, 92, 0.9); box-shadow: 0 0 18px rgba(255, 204, 92, 0.3); }
+      #scan {
+        left: 50%; transform: translateX(-50%); bottom: calc(94px + var(--sb)); z-index: 7;
+        width: min(84vw, 330px); padding: 10px 14px; border-radius: 12px; background: var(--glass);
+        border: 1px solid rgba(56, 225, 255, 0.55); font-size: 13px;
+      }
+      #scan .scanTop { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
+      #scan #scanName { color: #fff; }
+      #scan #scanPct { color: var(--cyan); font-weight: 800; font-variant-numeric: tabular-nums; }
+      #scan .bar { height: 7px; margin-top: 7px; border-radius: 4px; background: rgba(255,255,255,0.16); overflow: hidden; }
+      #scan .bar i { display: block; height: 100%; width: 100%; transform-origin: left; background: linear-gradient(90deg, var(--teal), var(--cyan)); }
+      #scan.done { border-color: var(--teal); }
+      #scan.done #scanPct { color: var(--teal); }
+      #card {
+        left: 50%; top: 22%; transform: translate(-50%, -8px); z-index: 10; width: min(88vw, 440px);
+        padding: 16px 18px; border-radius: 16px; background: rgba(7, 26, 54, 0.92);
+        border: 1px solid var(--teal); box-shadow: 0 0 30px rgba(47, 230, 184, 0.34);
+        opacity: 0; pointer-events: none; transition: opacity 0.42s ease, transform 0.42s ease;
+      }
+      #card.show { opacity: 1; transform: translate(-50%, 0); }
+      #cardName { font-size: 16px; font-weight: 800; color: #fff; }
+      #cardMeta { margin-top: 5px; font-size: 14px; font-weight: 700; color: var(--teal); }
+      #cardLog { margin-top: 8px; font-size: 12px; line-height: 1.55; color: rgba(234, 248, 255, 0.82); }
+      .panel {
+        left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 30; box-sizing: border-box;
+        width: min(92vw, 540px); max-height: 72dvh; display: flex; flex-direction: column;
+        pointer-events: auto; padding: 14px; border-radius: 18px; background: rgba(7, 24, 52, 0.94);
+        border: 1px solid rgba(56, 225, 255, 0.72); box-shadow: 0 0 34px rgba(56, 225, 255, 0.28);
+        backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      }
+      .panelHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
+      .panelHead h2 { margin: 0; font-size: 18px; font-style: italic; letter-spacing: 0.08em; color: var(--cyan); }
+      .panelClose { width: 48px; height: 48px; padding: 0; font-size: 24px; border-radius: 12px; }
+      .rows { min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+      .targetRow {
+        flex: none; min-height: 52px; width: 100%; box-sizing: border-box; pointer-events: auto;
+        display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 8px 14px;
+        border-radius: 10px; border: 1px solid rgba(139, 211, 255, 0.28); background: rgba(20, 55, 92, 0.65);
+        color: #eaf8ff; font: inherit; text-align: left; cursor: pointer;
+      }
+      .targetRow.sel { border-color: var(--teal); background: rgba(47, 230, 184, 0.17); box-shadow: inset 3px 0 0 var(--teal); }
+      .targetName { font-size: 15px; font-weight: 800; }
+      .targetMeta { font-size: 12px; color: #a8d9ec; white-space: nowrap; }
+      #launch { flex: none; width: 100%; height: 52px; border-radius: 12px; border-color: var(--teal); font-size: 17px; }
+      #launch:disabled { opacity: 0.42; cursor: default; }
+      #archive { width: min(92vw, 500px); }
+      .archiveRow {
+        flex: none; min-height: 52px; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) auto;
+        gap: 3px 14px; align-items: center; padding: 8px 12px; border-radius: 10px;
+        background: rgba(20, 55, 92, 0.58); border: 1px solid rgba(139, 211, 255, 0.23);
+      }
+      .archiveName { font-size: 14px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .archiveCount { font-size: 12px; color: var(--cyan); }
+      .archiveLoot { grid-column: 1 / -1; font-size: 12px; color: var(--teal); }
+      .empty { padding: 38px 10px; text-align: center; color: rgba(234, 248, 255, 0.66); }
       #tip {
         left: 50%; transform: translateX(-50%); bottom: calc(150px + var(--sb)); padding: 8px 16px; border-radius: 999px;
         background: var(--glass); border: 1px solid var(--teal); font-size: 14px; white-space: nowrap;
@@ -91,6 +153,9 @@
       }
       @media (orientation: portrait) {
         #flight { left: calc(14px + var(--sl)); transform: none; bottom: auto; top: calc(100px + var(--st)); width: 190px; }
+        #archBtn { right: calc(70px + var(--sr)); top: calc(68px + var(--st)); }
+        #warn { top: calc(132px + var(--st)); }
+        #scan { bottom: calc(154px + var(--sb)); }
       }
       @media (orientation: landscape) and (max-height: 480px) {
         #tip { bottom: calc(84px + var(--sb)); }
@@ -103,20 +168,46 @@
     <div id="hud">
       <div id="title"><div class="name" id="place">瞭望舱 I</div><div class="goal" id="goal"></div></div>
       <div id="tip" class="hidden"></div>
+      <div id="warn" class="hidden"></div>
+      <div id="scan" class="hidden">
+        <div class="scanTop"><span>扫描 <b id="scanName"></b></span><span id="scanPct">0%</span></div>
+        <div class="bar"><i id="scanBarFill"></i></div>
+      </div>
+      <div id="card" aria-live="polite">
+        <div id="cardName">扫描完成</div>
+        <div id="cardMeta"></div>
+        <div id="cardLog"></div>
+      </div>
       <div id="flight" class="hidden">
         <div class="row"><span>航速</span><span><span id="speed">0</span> km/s</span></div>
         <div class="row" style="margin-top: 4px"><span>推进能量</span><span id="energyPct">100%</span></div>
         <div id="energy"><i></i></div>
       </div>
-      <button id="act" class="btn hidden">启航</button>
+      <button id="act" class="btn hidden">星图</button>
       <button id="boost" class="btn hidden">推进</button>
       <button id="brake" class="btn hidden">减速</button>
       <button id="dock" class="btn hidden">返回舱内</button>
+      <button id="archBtn" class="btn" aria-label="扫描档案">档案</button>
       <button id="mute" class="btn" aria-label="静音">♪</button>
+      <div id="targets" class="panel hidden" role="dialog" aria-modal="true" aria-labelledby="targetsTitle">
+        <div class="panelHead">
+          <h2 id="targetsTitle">星图 · 选择目标</h2>
+          <button id="targetsClose" class="btn panelClose" aria-label="关闭星图">×</button>
+        </div>
+        <div id="targetRows" class="rows"></div>
+        <button id="launch" class="btn">启航</button>
+      </div>
+      <div id="archive" class="panel hidden" role="dialog" aria-modal="true" aria-labelledby="archiveTitle">
+        <div class="panelHead">
+          <h2 id="archiveTitle">扫描档案</h2>
+          <button id="archiveClose" class="btn panelClose" aria-label="关闭档案">×</button>
+        </div>
+        <div id="archiveRows" class="rows"></div>
+      </div>
       <div id="fade"></div>
       <div id="start">
         <h1>赛尔 · 瞭望舱</h1>
-        <p>左半屏摇杆 / WASD 移动 · 右半屏拖动 / 鼠标拖动转视角<br />走到全息星图台前，按「启航」飞向星海</p>
+        <p>左半屏摇杆 / WASD 移动 · 右半屏拖动 / 鼠标拖动转视角<br />走到全息星图台前，打开星图并选择目标启航</p>
         <button id="go" class="btn">开始探索</button>
       </div>
     </div>

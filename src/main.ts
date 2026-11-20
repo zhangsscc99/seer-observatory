@@ -2,12 +2,14 @@
 // input, HUD and audio. One scene; mode decides which groups are visible.
 import * as THREE from 'three';
 import { Sfx } from './audio/sfx.ts';
+import { ARCHIVE_KEY, addScan, emptyArchive, parseArchive, serializeArchive } from './game/archive.ts';
 import { buildCabinWorld, CABIN, nearPedestal } from './game/cabin.ts';
 import { ModeMachine, type Playable } from './game/mode.ts';
 import { clamp, damp } from './game/rng.ts';
 import { Robot } from './game/robot.ts';
+import { hazardEffect, SCAN, Scanner, type ScanTarget } from './game/scan.ts';
 import { forwardOf, Ship, SHIP } from './game/ship.ts';
-import { SECTOR_RADIUS, solidBodies } from './game/space.ts';
+import { PLANETS, planetById, SECTOR_RADIUS, solidBodies } from './game/space.ts';
 import { Controls } from './input/controls.ts';
 import { buildCabin } from './render/cabin.ts';
 import { Hud } from './render/hud.ts';
@@ -58,6 +60,20 @@ let ship = new Ship({ x: 0, y: 10, z: -40 }, 0);
 const sfx = new Sfx();
 const controls = new Controls(canvas);
 let started = false;
+const scanner = new Scanner();
+let archive = emptyArchive();
+let targetId: string | null = null;
+try {
+  archive = parseArchive(localStorage.getItem(ARCHIVE_KEY));
+} catch {
+  archive = emptyArchive();
+}
+try {
+  const savedTarget = localStorage.getItem('seer.target');
+  if (savedTarget !== null && planetById(savedTarget)) targetId = savedTarget;
+} catch {
+  targetId = null;
+}
 
 const cam = { yaw: 0, pitch: 0.3, zoom: 1, shipYaw: 0, shipPitch: 0 };
 const CAM_PITCH_MIN = 0.14;
@@ -87,6 +103,8 @@ const mode = new ModeMachine('cabin', {
       robot.heading = 0;
       cam.yaw = 0;
       cam.pitch = 0.3;
+      hud.setWarn(null, null);
+      hud.setScan(null, 0, false);
       sfx.play('dock');
     }
     applyScene(to);
@@ -104,7 +122,7 @@ const hud = new Hud(
       sfx.unlock();
       sfx.play('confirm');
     },
-    onAct: tryLaunch,
+    onAct: cabinInteract,
     onDock: tryDock,
     onMute() {
       sfx.unlock();
@@ -118,6 +136,14 @@ const hud = new Hud(
   },
   sfx.muted,
 );
+hud.setArchive(archive);
+hud.setTargets(PLANETS, targetId, selectTarget);
+space.setTarget(targetId);
+const savedTargetPlanet = targetId === null ? undefined : planetById(targetId);
+if (savedTargetPlanet) {
+  cabin.setHoloColor(savedTargetPlanet.colors[2]);
+  hud.setGoal(`航行至 ${savedTargetPlanet.name} 执行扫描`);
+}
 applyScene('cabin');
 
 function canLaunch(): boolean {
@@ -136,10 +162,45 @@ function tryDock(): void {
     hud.setScene('space', true);
   }
 }
-controls.onInteract = () => {
+function selectTarget(id: string): void {
+  const p = planetById(id);
+  if (!p) {
+    sfx.play('deny');
+    return;
+  }
+  targetId = id;
+  try {
+    localStorage.setItem('seer.target', id);
+  } catch {
+    /* private mode */
+  }
+  space.setTarget(id);
+  cabin.setHoloColor(p.colors[2]);
+  hud.setGoal(`航行至 ${p.name} 执行扫描`);
+  hud.setTargets(PLANETS, id, selectTarget);
+  hud.closeTargets();
+  sfx.play('confirm');
+  tryLaunch();
+}
+function cabinInteract(): void {
   if (!started) return;
-  if (mode.mode === 'cabin') tryLaunch();
-};
+  if (mode.mode !== 'cabin') return;
+  if (hud.targetsOpen) {
+    hud.closeTargets();
+    return;
+  }
+  if (hud.archiveOpen) {
+    hud.closePanels();
+    return;
+  }
+  if (nearPedestal(robot.x, robot.z)) {
+    hud.setTargets(PLANETS, targetId, selectTarget);
+    hud.toggleTargets();
+  } else {
+    sfx.play('deny');
+  }
+}
+controls.onInteract = cabinInteract;
 controls.onAnyGesture = () => {
   if (started) sfx.unlock();
 };
@@ -184,7 +245,8 @@ function updateCabin(dt: number, active: boolean): void {
     cam.yaw -= l.dx * 0.0055;
     cam.pitch = clamp(cam.pitch + l.dy * 0.004, CAM_PITCH_MIN, CAM_PITCH_MAX);
   }
-  robot.update(dt, { moveX: active ? controls.moveX : 0, moveY: active ? controls.moveY : 0, run: controls.run, camYaw: cam.yaw }, world);
+  const moving = active && !hud.panelOpen;
+  robot.update(dt, { moveX: moving ? controls.moveX : 0, moveY: moving ? controls.moveY : 0, run: moving && controls.run, camYaw: cam.yaw }, world);
   if (robot.steps !== lastSteps) {
     lastSteps = robot.steps;
     sfx.play('footstep');
@@ -198,8 +260,8 @@ function updateCabin(dt: number, active: boolean): void {
   if (near && !wasNear) sfx.play('prompt');
   wasNear = near;
   if (mode.mode === 'cabin') {
-    hud.setInteract(near);
-    hud.setTip(near ? '全息星图台已就绪 · 点击「启航」或按 E' : '');
+    hud.setInteract(near && !hud.panelOpen);
+    hud.setTip(near ? '全息星图台已就绪 · 点击「星图」或按 E' : '');
   }
 
   // orbit camera, pulled in so it never leaves the hull
@@ -234,13 +296,29 @@ function updateCabin(dt: number, active: boolean): void {
   cabin.update(time, dt, thrust);
 }
 
+function nearestScanTarget(): ScanTarget | null {
+  let best: ScanTarget | null = null;
+  let bestDist = Infinity;
+  for (const p of PLANETS) {
+    const d = Math.hypot(ship.pos.x - p.pos.x, ship.pos.y - p.pos.y, ship.pos.z - p.pos.z);
+    if (d <= p.radius * SCAN.rangeFactor && d < bestDist) {
+      bestDist = d;
+      best = { id: p.id, name: p.name, radius: p.radius, hazard: p.hazard };
+    }
+  }
+  return best;
+}
+
 function updateSpace(dt: number, active: boolean): void {
   controls.consumeLook();
+  const near = nearestScanTarget();
+  const hazard = hazardEffect(near?.hazard);
   ship.update(
     dt,
     { steerX: active ? controls.moveX : 0, steerY: active ? controls.moveY : 0, boost: active && controls.boost, brake: active && controls.brake },
     bodies,
     SECTOR_RADIUS,
+    hazard.energyMul,
   );
   if (ship.bumped && ship.speed > 20) sfx.play('bump');
   shipPos.set(ship.pos.x, ship.pos.y, ship.pos.z);
@@ -266,6 +344,24 @@ function updateSpace(dt: number, active: boolean): void {
   camera.updateProjectionMatrix();
   hud.setFlight(ship.speed, ship.energy / SHIP.energyMax, ship.depleted);
   hud.setTip(ship.depleted ? '推进能量耗尽 · 充能中' : Math.hypot(ship.pos.x, ship.pos.y, ship.pos.z) > SECTOR_RADIUS ? '已到达星域边界 · 自动返航' : '');
+  hud.setWarn(hazard.warn, near?.hazard ?? null);
+
+  const events = scanner.update(dt, near, active && controls.act);
+  for (const ev of events) {
+    if (ev.type !== 'complete') continue;
+    const p = planetById(ev.id);
+    const name = p?.name ?? ev.id;
+    archive = addScan(archive, { id: ev.id, name, resource: ev.resource, amount: ev.amount }, Date.now());
+    try {
+      localStorage.setItem(ARCHIVE_KEY, serializeArchive(archive));
+    } catch {
+      /* private mode */
+    }
+    hud.setArchive(archive);
+    hud.showScanCard(name, ev.resource, ev.amount, ev.log);
+    sfx.play('confirm');
+  }
+  hud.setScan(near?.name ?? null, scanner.progress, scanner.done);
 }
 
 function frame(now: number): void {
@@ -297,8 +393,16 @@ window.__seer = {
   robotView,
   controls,
   sfx,
+  space,
+  scanner,
   get ship() {
     return ship;
+  },
+  get archive() {
+    return archive;
+  },
+  get targetId() {
+    return targetId;
   },
   get started() {
     return started;

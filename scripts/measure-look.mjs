@@ -172,6 +172,7 @@ for (const [w, h, gate] of VIEWS) {
     ok = false;
   }
   await page.evaluate(() => document.getElementById('act').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })));
+  await page.evaluate(() => document.getElementById('launch').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })));
   for (let i = 0; i < 240; i++) {
     await page.waitForTimeout(250);
     if ((await page.evaluate(() => window.__seer.mode.mode)) === 'space') break;

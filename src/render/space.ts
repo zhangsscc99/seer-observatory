@@ -157,6 +157,7 @@ export interface SpaceView {
   /** only in flight */
   near: THREE.Group;
   sunLight: THREE.DirectionalLight;
+  setTarget(id: string | null): void;
   update(t: number, dt: number, cam: THREE.Camera, shipPos: THREE.Vector3, shipFwd: THREE.Vector3, speedFrac: number): void;
 }
 
@@ -189,6 +190,14 @@ export function buildSpace(): SpaceView {
   const planets = PLANETS.map(buildPlanet);
   far.add(...planets);
   far.add(buildBelt());
+  const markerMat = new THREE.MeshBasicMaterial({
+    color: PAL.cyan, transparent: true, opacity: 0.7,
+    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+  });
+  const marker = new THREE.Mesh(new THREE.RingGeometry(1.0, 1.12, 72), markerMat);
+  marker.rotation.x = -Math.PI / 2;
+  marker.visible = false;
+  far.add(marker);
 
   const station = buildStation();
   near.add(station);
@@ -219,8 +228,19 @@ export function buildSpace(): SpaceView {
     far,
     near,
     sunLight,
+    setTarget(id) {
+      const p = id === null ? undefined : PLANETS.find((planet) => planet.id === id);
+      if (!p) {
+        marker.visible = false;
+        return;
+      }
+      marker.position.set(p.pos.x, p.pos.y - p.radius * 1.3, p.pos.z);
+      marker.scale.setScalar(p.radius * 1.3);
+      marker.visible = true;
+    },
     update(t, dt, _cam, shipPos, _fwd, speedFrac) {
       for (const p of planets) p.getObjectByName('surface')!.rotation.y += dt * 0.01;
+      markerMat.opacity = 0.55 + 0.25 * Math.sin(t * 2.4);
       flare.material.rotation = t * 0.02;
       flare.scale.setScalar(SUN_RADIUS * (14 + Math.sin(t * 0.9) * 0.8));
       beacon.scale.setScalar(1 + 0.5 * Math.max(0, Math.sin(t * 3)));

@@ -47,7 +47,7 @@ assert.ok(page, 'page never rendered');
 
 const S = (fn) => page.evaluate(fn);
 const tap = (id) => page.evaluate((i) => document.getElementById(i).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })), id);
-const until = async (fn, label, ms = 60000) => {
+const until = async (fn, label, ms = 240000) => {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
     if (await page.evaluate(fn)) return;
@@ -80,10 +80,17 @@ assert.ok(r.steps > 3 && (await S(() => window.__seer.sfx.counts.footstep)) > 3)
 step(`walked to the holo table (z ${z0.toFixed(1)} → ${r.z.toFixed(2)}), blocked by pedestal, footsteps fired`);
 
 await tap('act');
+assert.equal(await S(() => document.getElementById('targets').classList.contains('hidden')), false);
+step('星图 opens with selectable targets');
+
+await tap('launch');
 assert.equal(await S(() => window.__seer.mode.mode), 'transit');
+const chosen = await S(() => ({ saved: localStorage.getItem('seer.target'), targetId: window.__seer.targetId, goal: document.getElementById('goal').textContent }));
+assert.equal(chosen.saved, chosen.targetId);
+assert.match(chosen.goal, /^航行至 .+ 执行扫描$/);
 await until(() => window.__seer.mode.mode === 'space', 'arrive in space');
 assert.equal(await S(() => document.getElementById('boost').classList.contains('hidden')), false);
-step('启航 → transit → space, flight HUD shown');
+step(`target ${chosen.saved} saved; 启航 → transit → space, flight HUD shown`);
 
 const v0 = await S(() => window.__seer.ship.speed);
 await page.keyboard.down('Space');

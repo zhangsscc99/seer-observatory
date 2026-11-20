@@ -12,6 +12,8 @@ export class Controls {
   brakeKey = false;
   boostBtn = false;
   brakeBtn = false;
+  actKey = false;
+  actBtn = false;
   onInteract: () => void = () => {};
   onAnyGesture: () => void = () => {};
 
@@ -119,6 +121,7 @@ export class Controls {
     this.run = this.key('ShiftLeft', 'ShiftRight') || stickLen > 0.92;
     this.boostKey = this.key('Space', 'ShiftLeft', 'ShiftRight');
     this.brakeKey = this.key('KeyX', 'ControlLeft', 'KeyC');
+    this.actKey = this.key('KeyE', 'KeyF', 'Enter');
   }
 
   get boost(): boolean {
@@ -126,6 +129,9 @@ export class Controls {
   }
   get brake(): boolean {
     return this.brakeKey || this.brakeBtn;
+  }
+  get act(): boolean {
+    return this.actKey || this.actBtn;
   }
 
   /** accumulated look drag in CSS px since the last call */

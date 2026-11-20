@@ -12,6 +12,7 @@ export interface CabinView {
   group: THREE.Group;
   /** t: seconds, thrust: 0..1 launch charge */
   update(t: number, dt: number, thrust: number): void;
+  setHoloColor(hex: number): void;
 }
 
 function place(obj: THREE.Object3D, deg: number, r: number, y = 0): THREE.Object3D {
@@ -311,13 +312,21 @@ export function buildCabin(): CabinView {
   cool.position.set(0, 2.9, 0);
   group.add(hemi, key, key.target, holoLight, cool);
 
-  const holoMats = [ped.globe.children[0], ped.globe.children[1], ped.globe.children[2], ...ped.rings].map(
-    (m) => (m as THREE.Mesh).material as THREE.MeshBasicMaterial,
-  );
+  const holoMats = [
+    ped.globe.children[0],
+    ped.globe.children[1],
+    ped.globe.children[2],
+    ...ped.rings,
+    ped.beam,
+  ].map((m) => (m as THREE.Mesh).material as THREE.MeshBasicMaterial);
   const baseOpacity = holoMats.map((m) => m.opacity);
 
   return {
     group,
+    setHoloColor(hex) {
+      const color = new THREE.Color(hex);
+      for (const m of holoMats) m.color.copy(color);
+    },
     update(t, dt, thrust) {
       const spin = 0.5 + thrust * 14;
       ped.globe.rotation.y += dt * spin;
