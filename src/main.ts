@@ -9,7 +9,7 @@ import { clamp, damp } from './game/rng.ts';
 import { Robot } from './game/robot.ts';
 import { hazardEffect, SCAN, Scanner, type ScanTarget } from './game/scan.ts';
 import { forwardOf, Ship, SHIP } from './game/ship.ts';
-import { PLANETS, planetById, SECTOR_RADIUS, solidBodies } from './game/space.ts';
+import { PLANETS, planetById, SECTOR_RADIUS, solidBodies, SUN_DIR } from './game/space.ts';
 import { Controls } from './input/controls.ts';
 import { buildCabin } from './render/cabin.ts';
 import { Hud } from './render/hud.ts';
@@ -416,4 +416,25 @@ window.__seer = {
   launch: tryLaunch,
   dock: tryDock,
   info: () => renderer.info.render,
+  /** e2e/debug: teleport the ship to 3R of a planet, sun at our back, facing it */
+  focusPlanet(id: string) {
+    const p = planetById(id);
+    if (!p || mode.mode !== 'space') return false;
+    const dist = p.radius * 3;
+    ship.pos.x = p.pos.x + SUN_DIR.x * dist;
+    ship.pos.y = p.pos.y + SUN_DIR.y * dist;
+    ship.pos.z = p.pos.z + SUN_DIR.z * dist;
+    const fx = p.pos.x - ship.pos.x;
+    const fy = p.pos.y - ship.pos.y;
+    const fz = p.pos.z - ship.pos.z;
+    const fl = Math.hypot(fx, fy, fz);
+    ship.yaw = Math.atan2(-fx / fl, -fz / fl);
+    ship.pitch = Math.asin(fy / fl);
+    ship.roll = 0;
+    ship.speed = SHIP.brakeSpeed;
+    ship.energy = SHIP.energyMax;
+    cam.shipYaw = ship.yaw;
+    cam.shipPitch = ship.pitch;
+    return true;
+  },
 };

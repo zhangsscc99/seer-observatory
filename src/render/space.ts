@@ -6,6 +6,7 @@ import { mulberry32 } from '../game/rng.ts';
 import { beltRocks, PLANETS, STATION, SUN_DIR, SUN_DISTANCE, SUN_RADIUS, type PlanetDef } from '../game/space.ts';
 import { MAT, arc, glow } from './materials.ts';
 import { PAL } from './palette.ts';
+import { buildRings } from './rings.ts';
 import { flareTexture, planetTexture, radialTexture, rockTexture } from './textures.ts';
 
 const sunDir = new THREE.Vector3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z);
@@ -80,6 +81,7 @@ function buildPlanet(p: PlanetDef): THREE.Group {
     }),
   );
   g.add(surface, halo);
+  if (p.kind === 'ice-ring') g.add(buildRings(p));
   return g;
 }
 
@@ -239,7 +241,11 @@ export function buildSpace(): SpaceView {
       marker.visible = true;
     },
     update(t, dt, _cam, shipPos, _fwd, speedFrac) {
-      for (const p of planets) p.getObjectByName('surface')!.rotation.y += dt * 0.01;
+      for (const p of planets) {
+        p.getObjectByName('surface')!.rotation.y += dt * 0.01;
+        const rings = p.getObjectByName('rings');
+        if (rings) (rings.userData.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
+      }
       markerMat.opacity = 0.55 + 0.25 * Math.sin(t * 2.4);
       flare.material.rotation = t * 0.02;
       flare.scale.setScalar(SUN_RADIUS * (14 + Math.sin(t * 0.9) * 0.8));
