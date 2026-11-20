@@ -40,22 +40,69 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
-// outer halo shell (BackSide, additive): peaks at the planet limb, fades outward
+// outer halo shell (BackSide, additive): peaks at the planet limb, fades
+// outward. Night side decays to 20%; the terminator scatters ~8% warmer.
 const HALO_FRAG = /* glsl */ `
-uniform vec3 uSun; uniform vec3 uAtmo; uniform float uEdge;
+uniform vec3 uSun; uniform vec3 uAtmo; uniform float uEdge; uniform float uPow; uniform float uGain;
 varying vec3 vN; varying vec3 vW;
 void main() {
   vec3 n = normalize(vN);
   vec3 v = normalize(cameraPosition - vW);
   float d = clamp(-dot(n, v) / uEdge, 0.0, 1.0);
-  float a = pow(d, 3.2);
-  float lit = 0.3 + 0.7 * smoothstep(-0.6, 0.4, dot(n, uSun));
-  gl_FragColor = vec4(uAtmo * a * lit * 0.8, 1.0);
+  float a = pow(d, uPow);
+  float ndl = dot(n, uSun);
+  float lit = 0.2 + 0.8 * smoothstep(-0.6, 0.4, ndl);
+  float term = smoothstep(0.25, 0.85, 1.0 - abs(ndl));
+  vec3 tint = mix(uAtmo, uAtmo * vec3(1.08, 1.0, 0.92), term);
+  gl_FragColor = vec4(tint * a * lit * uGain, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+
+// thin additive frost veil (FrontSide): sun-side drifting noise, alpha ≤ 0.12
+const FROST_FRAG = /* glsl */ `
+uniform vec3 uSun; uniform vec3 uAtmo; uniform float uTime;
+varying vec3 vN; varying vec3 vW;
+float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float vnoise3(vec3 p) {
+  vec3 i = floor(p); vec3 f = fract(p);
+  vec3 u = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(hash3(i), hash3(i + vec3(1.0, 0.0, 0.0)), u.x), mix(hash3(i + vec3(0.0, 1.0, 0.0)), hash3(i + vec3(1.0, 1.0, 0.0)), u.x), u.y),
+    mix(mix(hash3(i + vec3(0.0, 0.0, 1.0)), hash3(i + vec3(1.0, 0.0, 1.0)), u.x), mix(hash3(i + vec3(0.0, 1.0, 1.0)), hash3(i + vec3(1.0, 1.0, 1.0)), u.x), u.y),
+    u.z);
+}
+void main() {
+  vec3 n = normalize(vN);
+  float day = smoothstep(-0.15, 0.45, dot(n, uSun));
+  float wisp = vnoise3(n * 5.0 + vec3(uTime * 0.06, uTime * 0.04, uTime * 0.05));
+  float a = day * (0.35 + 0.65 * wisp) * 0.12;
+  gl_FragColor = vec4(uAtmo, a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
 
 const HALO_SCALE = 1.16;
+const HALO_SCALE_NARROW = 1.05;
+const FROST_SCALE = 1.02;
+
+function haloShell(p: PlanetDef, scale: number, peakPow: number, gain: number, atmo: THREE.Color): THREE.Mesh {
+  return new THREE.Mesh(
+    new THREE.SphereGeometry(p.radius * scale, 48, 32),
+    new THREE.ShaderMaterial({
+      vertexShader: PLANET_VERT,
+      fragmentShader: HALO_FRAG,
+      uniforms: {
+        uSun: { value: sunDir },
+        uAtmo: { value: atmo },
+        uEdge: { value: Math.sqrt(1 - 1 / (scale * scale)) },
+        uPow: { value: peakPow },
+        uGain: { value: gain },
+      },
+      side: THREE.BackSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    }),
+  );
+}
 
 function buildPlanet(p: PlanetDef): THREE.Group {
   const g = new THREE.Group();
@@ -71,17 +118,28 @@ function buildPlanet(p: PlanetDef): THREE.Group {
   );
   surface.name = 'surface';
   surface.rotation.z = 0.25;
-  const halo = new THREE.Mesh(
-    new THREE.SphereGeometry(p.radius * HALO_SCALE, 48, 32),
-    new THREE.ShaderMaterial({
-      vertexShader: PLANET_VERT,
-      fragmentShader: HALO_FRAG,
-      uniforms: { uSun: { value: sunDir }, uAtmo: { value: atmo }, uEdge: { value: Math.sqrt(1 - 1 / (HALO_SCALE * HALO_SCALE)) } },
-      side: THREE.BackSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
-    }),
-  );
+  const halo = haloShell(p, HALO_SCALE, 3.2, 0.8, atmo);
   g.add(surface, halo);
-  if (p.kind === 'ice-ring') g.add(buildRings(p));
+  const timeMats: THREE.ShaderMaterial[] = [];
+  if (p.kind === 'ice-ring') {
+    // dual halo: narrow bright rim (sharper peak) inside the wide mist
+    g.add(haloShell(p, HALO_SCALE_NARROW, 6.0, 1.0, atmo));
+    // low-temperature frost veil on the sun side
+    const frost = new THREE.Mesh(
+      new THREE.SphereGeometry(p.radius * FROST_SCALE, 48, 32),
+      new THREE.ShaderMaterial({
+        vertexShader: PLANET_VERT,
+        fragmentShader: FROST_FRAG,
+        uniforms: { uSun: { value: sunDir }, uAtmo: { value: atmo }, uTime: { value: 0 } },
+        transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+      }),
+    );
+    g.add(frost);
+    const rings = buildRings(p);
+    g.add(rings);
+    timeMats.push(rings.userData.material as THREE.ShaderMaterial, frost.material as THREE.ShaderMaterial);
+  }
+  g.userData.timeMats = timeMats;
   return g;
 }
 
@@ -243,8 +301,7 @@ export function buildSpace(): SpaceView {
     update(t, dt, _cam, shipPos, _fwd, speedFrac) {
       for (const p of planets) {
         p.getObjectByName('surface')!.rotation.y += dt * 0.01;
-        const rings = p.getObjectByName('rings');
-        if (rings) (rings.userData.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
+        for (const m of (p.userData.timeMats ?? []) as THREE.ShaderMaterial[]) m.uniforms.uTime.value = t;
       }
       markerMat.opacity = 0.55 + 0.25 * Math.sin(t * 2.4);
       flare.material.rotation = t * 0.02;

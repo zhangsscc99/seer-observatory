@@ -55,6 +55,13 @@ function makeNoise(seed: number, period: number): (x: number, y: number) => numb
 
 const D2R = Math.PI / 180;
 
+/** deterministic 2-D int → [0,1) hash (voronoi feature-point jitter) */
+function vhash(i: number, j: number): number {
+  let h = (Math.imul(i, 374761393) + Math.imul(j, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
 /** Cabin floor: top-down map of the whole disc (canvas top = bow).
  *  Returns colour + emissive maps. */
 export function floorTextures(R: number): { map: THREE.Texture; emissive: THREE.Texture; rough: THREE.Texture } {
@@ -345,6 +352,38 @@ export function planetTexture(p: PlanetDef): THREE.Texture {
         const crack = Math.abs(n2(u * 2, v * 2) - 0.5) < 0.015 ? 1 : 0;
         rgb = mix(mix(cols[0], cols[1], ss(0.3, 0.6, hgt)), cols[2], ss(0.6, 0.8, hgt));
         rgb = mix(rgb, [70, 130, 200], crack * 0.7);
+      } else if (p.kind === 'ice-ring') {
+        // bright ice shell mottled blue-white
+        const hgt = n(u * 1.6, v * 1.6);
+        rgb = mix(mix(cols[0], cols[1], ss(0.3, 0.68, hgt)), cols[2], ss(0.62, 0.92, hgt));
+        // fine polygonal cracks: jittered-grid voronoi, F2−F1 edge distance
+        let f1 = 1e9;
+        let f2 = 1e9;
+        const ci = Math.floor(u / 0.5);
+        const cj = Math.floor(v / 0.5);
+        for (let dj = -1; dj <= 1; dj++) {
+          for (let di = -1; di <= 1; di++) {
+            const ii = ci + di;
+            const jj = cj + dj;
+            const px = (ii + vhash(ii * 7, jj * 13)) * 0.5;
+            const py = (jj + vhash(ii * 13, jj * 7)) * 0.5;
+            let dx = u - px;
+            dx -= Math.round(dx / 8) * 8; // u tiles with period 8
+            const dy = v - py;
+            const d = dx * dx + dy * dy;
+            if (d < f1) {
+              f2 = f1;
+              f1 = d;
+            } else if (d < f2) {
+              f2 = d;
+            }
+          }
+        }
+        const crack = ss(0.045, 0.012, Math.sqrt(f2) - Math.sqrt(f1));
+        rgb = mix(rgb, cols[0], crack * (0.25 + 0.45 * n2(u * 3, v * 3)));
+        // polar caps: brighter, bluer
+        const cap = ss(0.3, 0.42, Math.abs(lat - 0.5) + (hgt - 0.5) * 0.06);
+        rgb = mix(rgb, [248, 252, 255], cap);
       } else {
         const hgt = n(u * 1.2, v * 1.2);
         const vein = 1 - ss(0, 0.05, Math.abs(n2(u * 1.6, v * 1.6) - 0.5));
