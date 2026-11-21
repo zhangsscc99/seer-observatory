@@ -109,12 +109,22 @@ npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measu
 | 8.4 | 自发光着色器：双层 UV 慢速对流（uTime 0.02）+ 临边昏暗 `pow(1-NdV,1.6)` → 亮度 ×0.34、色偏「红移」+ 色球边缘 + 双层 halo(1.16R gain .62 / 1.06R gain .72) + 5 条日珥弧 + 2.6R 尘埃幕壳与 420 颗逆光尘 + 5.8R 暖橙耀斑 billboard + 局部 PointLight | `grep -n "RED_GIANT_FRAG\|buildProminences\|buildDustVeil" src/render/space.ts` |
 | 8.5 | 特写出图：`red-844x390.png` / `red-390x844.png`，阈值不变 | `node scripts/measure-look.mjs` → `LOOK OK`；`ls e2e/shots/red-*.png` |
 
+## M9 双星系 binary + T1/T2（F901–F905）
+
+| # | 功能 | verify |
+| --- | --- | --- |
+| 9.1 | PLANETS 新增 `binary`（`双子星域`，`(1100,-30,-520)` r135，kind `'binary'`，hazard `'photon'`，间距 > 半径和 + 100，SECTOR_RADIUS 内）与 `BINARY_STARS`（冷白主星 `0xbfe0ff` / 暖橙伴星 `0xffb066`）；`HAZARDS.photon` 回充 ×1.3；`scanResult('binary')` 得「双星等离子」与 ≥40 字观测日志 | `node --test --test-name-pattern="binary\|photon\|bounding\|sector" src/game/` |
+| 9.2 | 双星系视觉：`binaryTexture()` 1024×512（冷暖双半球 + 晨昏环带 + 高频云絮/细丝卷云 + 极区暗化 + 双直射斑）；两颗自发光恒星 + 1.14R/1.28R 成对 halo + 耀斑；距离衰减（550→1100）的第二盏暖橙 `DirectionalLight`（1.5，隔离在 `near`）与主光冷色温插值；双星行星双色 fresnel + 夜侧 ≥0.08 底色 | `grep -n "binaryTexture\|buildBinaryStar\|BINARY_PLANET_FRAG\|binaryWarmLight" src/render/textures.ts src/render/space.ts` |
+| 9.3 | 扫描链路与星图台：`TARGETS` 自动包含、扫描入 `seer.archive`、星图台选中 `binary` 切冷暖双色全息球与太空标记环、靠近/选中时顶部青色警示条展示 `photon` 文案 | `grep -n "applyTargetHolo\|setHoloColor\|photon" src/main.ts src/render/cabin.ts src/render/hud.ts` |
+| 9.4 | look gate 出图：`focusPlanet('binary')` 3.15R 偏离反日方向使伴星入画；`measure-look.mjs` 产出 `binary-{844x390,390x844}.png`（阈值不放宽） | `grep -n "binary" src/main.ts scripts/measure-look.mjs`；`node --check scripts/measure-look.mjs` |
+| 9.5 | 走查待办 T1/T2：竖屏 390×844 顶部 `#archBtn` / `#dock` / `#mute` 高度 ≥48px 且不重叠（`smoke.mjs` 断言）；`measure-look.mjs` 竖屏 info-only 行只打印 `info` | `node e2e/smoke.mjs` → `SMOKE OK`；`grep -n "info  " scripts/measure-look.mjs` |
+
 ## 已知待办（M8 走查后，下一轮优先）
 
 | # | 问题 | 证据 | 验收 |
 | --- | --- | --- | --- |
-| T1 | HUD 顶部「档案 / 返回舱内 / 静音」视觉高度 ~34–40px，低于移动端 48px 触控标准 | `e2e/shots/red-390x844.png` | DOM 实测三者 ≥48px 且互不重叠；`node e2e/smoke.mjs` 通过 |
-| T2 | `measure-look` 对竖屏 info-only 行仍打印 `FAIL`（不应有 PASS/FAIL 字样），易被误读为闸门失败 | 一次完整跑的输出 | 竖屏行只打印 `info`，闸门结论只看横屏 |
+| T1 | ✅（M9 F905 已修）HUD 顶部「档案 / 返回舱内 / 静音」竖屏触控高度 50px ≥ 48px 且互不重叠 | `index.html` 竖屏媒体查询 + `e2e/smoke.mjs` 断言 | DOM 实测三者 ≥48px 且互不重叠；`node e2e/smoke.mjs` 通过 |
+| T2 | ✅（M9 F905 已修）`measure-look` 对竖屏 info-only 行不再打印 `PASS/FAIL`，只打印 `info` | `scripts/measure-look.mjs` `report(..., gate)` | 竖屏行只打印 `info`，闸门结论只看横屏 |
 | T3 | gas-storm 条带仍偏平滑，缺高频碎云/丝状卷曲；风暴眼偏同心椭圆，螺旋臂可再强化 | `e2e/shots/gas-844x390.png` | 特写里能数出 ≥3 条螺旋臂、条带边缘有破碎感（人工评审 + measure 不退化） |
 | T4 | 特写里悬浮采集站偏小、易与飞船剪影混淆 | 同上 | 站体在特写里 ≥1/5 画面高、能辨认环台/塔/窗光 |
 | T5 | red-giant 光球在 2.55R 特写下读成「干裂泥地/岩浆裂纹」：Voronoi 米粒尺度仍偏大、暗沟过宽，看不出沸腾对流 | `e2e/shots/red-844x390.png` | 特写里米粒直径 ≤ 屏高 1.5%，沟槽细而密（≥300 个可见单元），仍有 16 个耀斑核 |
