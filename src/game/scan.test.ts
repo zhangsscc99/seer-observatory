@@ -103,7 +103,9 @@ test('sector data: every TARGET resolves, hazards assigned per design', () => {
   assert.equal(planetById('volc')!.hazard, 'radiation');
   assert.equal(planetById('icer')!.hazard, 'cold');
   assert.equal(planetById('gas-storm')!.hazard, 'gravity');
+  assert.equal(planetById('red-giant')!.hazard, 'radiation');
   assert.equal(scanResult('icer').resource, '氦-3 冰芯');
   assert.equal(scanResult('gas-storm').resource, '风暴氦芯');
+  assert.equal(scanResult('red-giant').resource, '红巨星等离子');
   assert.ok(PLANETS.length === TARGETS.length);
 });

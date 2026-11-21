@@ -13,6 +13,7 @@ const KIND_LABEL: Record<PlanetDef['kind'], string> = {
   lava: '熔岩行星',
   'ice-ring': '冰环行星',
   'gas-storm': '气态巨行星',
+  'red-giant': '红巨星',
 };
 
 const HAZARD_LABEL: Record<HazardKind, string> = {
@@ -279,7 +280,7 @@ export class Hud {
     this.warn.classList.toggle('hidden', !text);
     if (!text) return;
     this.warn.textContent = text;
-    const gold = hazard === 'wind' || hazard === 'gravity';
+    const gold = hazard === 'radiation' || hazard === 'wind' || hazard === 'gravity';
     this.warn.classList.toggle('gold', gold);
     this.warn.classList.toggle('cyan', !gold);
   }

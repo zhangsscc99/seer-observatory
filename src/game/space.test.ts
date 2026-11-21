@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { scanResult } from './scan.ts';
+import { hazardEffect, scanResult } from './scan.ts';
 import { PLANETS, SECTOR_RADIUS, TARGETS, planetById } from './space.ts';
 
 test('every target id resolves and the target list covers the sector', () => {
@@ -15,6 +15,7 @@ test('hazards follow the sector design table', () => {
   assert.equal(planetById('volc')!.hazard, 'radiation');
   assert.equal(planetById('icer')!.hazard, 'cold');
   assert.equal(planetById('gas-storm')!.hazard, 'gravity');
+  assert.equal(planetById('red-giant')!.hazard, 'radiation');
 });
 
 test('icer: ice-ring planet registered and scannable', () => {
@@ -38,6 +39,29 @@ test('gas-storm: gas-storm planet registered and scannable', () => {
   assert.ok(res.amount >= 3 && res.amount <= 7, `amount ${res.amount}`);
   const len = [...res.log].length;
   assert.ok(len >= 20 && len <= 40, `log length ${len}`);
+});
+
+test('red-giant: red-giant star registered, largest body, scannable with radiation warn', () => {
+  const p = planetById('red-giant');
+  assert.ok(p);
+  assert.equal(p.kind, 'red-giant');
+  assert.equal(p.hazard, 'radiation');
+  assert.ok(TARGETS.includes('red-giant'));
+  assert.equal(TARGETS.filter((id) => id === 'red-giant').length, 1);
+  for (const other of PLANETS) {
+    if (other.id !== 'red-giant') assert.ok(p.radius > other.radius, `red-giant r=${p.radius} > ${other.id} r=${other.radius}`);
+  }
+  const res = scanResult('red-giant');
+  assert.equal(res.resource, '红巨星等离子');
+  assert.ok(res.amount >= 3 && res.amount <= 7, `amount ${res.amount}`);
+  const len = [...res.log].length;
+  assert.ok(len >= 20 && len <= 40, `log length ${len}`);
+  assert.match(res.log, /辐射/);
+  assert.match(res.log, /日冕/);
+  assert.match(res.log, /尘埃幕/);
+  const eff = hazardEffect(p.hazard);
+  assert.ok(eff.warn && eff.warn.length > 0);
+  assert.equal(eff.warn, '强辐射·护盾警报');
 });
 
 test('planet bounding spheres never overlap', () => {
