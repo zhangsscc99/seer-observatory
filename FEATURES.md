@@ -79,6 +79,17 @@ npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measu
 | 6.4 | 舱内曝光回归：分区曝光（舱内 0.72 / 太空 1.0）、哑光塑料 0.05/0.72、地砖压暗、接触阴影贴片；mean 152.6 → 127.5 ∈ 110-135 | `node scripts/measure-look.mjs`（cabin 全 PASS） |
 | 6.5 | `measure-look` 逐场景阈值：cabin 110-135 + darkFrac ≤0.15 / space 45-95 / p95 ≥120（竖屏只记录）；`focusPlanet('icer')` 输出 `icer-{844x390,390x844}.png` | `node scripts/measure-look.mjs` → `LOOK OK`；`ls e2e/shots/icer-*.png` |
 
+## M7 气态巨行星 gas-storm（F701–F705）
+
+| # | 功能 | verify |
+| --- | --- | --- |
+| 7.1 | PLANETS 新增 gas-storm（kind 'gas-storm'、hazard 'gravity'、包围球不重叠、SECTOR_RADIUS 内），TARGETS 自动包含 | `node --test --test-name-pattern="gas-storm" src/game/` |
+| 7.2 | 扫描资源/日志：scanResult('gas-storm') → 风暴氦芯 + 专属观测日志 | `node --test --test-name-pattern="gas-storm" src/game/` |
+| 7.3 | 1024×512 equirect 条带贴图：域扭曲 + 4 层条带 + 絮状/细湍流 + 对数螺旋风暴眼 + 极区暗化 | `grep -n "gas-storm" src/render/textures.ts` |
+| 7.4 | 着色器：赤道快极区慢的差速流动 + 风暴眼旋转采样 + 夜侧边缘散射（不死黑）+ 双层暖橙 halo | `grep -n "uStorm" src/render/space.ts` |
+| 7.5 | 程序化悬浮采集站（环台+桁架+塔+16 窗光+3 暖工灯+采集缆+信标，自转/浮动，≤9 draw call） | `grep -n "buildGasStation" src/render/space.ts` |
+| 7.6 | measure-look 泛化特写：`icer-*` 与 `gas-*` 两个视口都出图；preview server 掉线自动重启 | `node scripts/measure-look.mjs` → `LOOK OK`；`ls e2e/shots/gas-*.png` |
+
 ## 交付
 
 | # | 功能 | verify |
