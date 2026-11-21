@@ -444,6 +444,10 @@ window.__seer = {
       // 3/4 lit view with ~15° elevation so zonal bands, storm eye and station read
       dist = p.radius * 2.6;
       dir.set(0.75, Math.sin((15 * Math.PI) / 180), -0.6).normalize();
+    } else if (p.kind === 'red-giant') {
+      // close approach inside 3.2R scan range (radiation HUD warn active) & edge of 2.6R dust veil
+      dist = p.radius * 2.55;
+      dir.set(0.48, 0.14, -0.86).normalize();
     }
     ship.pos.x = p.pos.x + dir.x * dist;
     ship.pos.y = p.pos.y + dir.y * dist;

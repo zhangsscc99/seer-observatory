@@ -241,10 +241,11 @@ for (const [w, h, gate] of VIEWS) {
   const spacePass = report(`space ${tag}${gate ? '' : ' (info)'}`, space, THRESH.space);
   if (gate && !spacePass) ok = false;
 
-  // planet close-ups (info-only): icer 3/4 ring view + gas-storm banded vortex + station
+  // planet close-ups (info-only): icer 3/4 ring view + gas-storm + red-giant
   for (const [id, shotName] of [
     ['icer', 'icer'],
     ['gas-storm', 'gas'],
+    ['red-giant', 'red'],
   ]) {
     const focused = await page.evaluate((pid) => window.__seer.focusPlanet(pid), id);
     if (!focused) {
@@ -265,7 +266,7 @@ if (errors.length) {
   ok = false;
   console.log(`FAIL  js errors:\n${errors.join('\n')}`);
 }
-console.log(`shots: ${path.relative(ROOT, SHOTS)}/{cabin,space,gas,icer}-{844x390,390x844}.png`);
+console.log(`shots: ${path.relative(ROOT, SHOTS)}/{cabin,space,gas,icer,red}-{844x390,390x844}.png`);
 console.log(ok ? 'LOOK OK' : 'LOOK FAILED');
 cleanup();
 process.exit(ok ? 0 : 1);
