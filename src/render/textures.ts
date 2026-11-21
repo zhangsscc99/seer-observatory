@@ -315,6 +315,7 @@ export function flareTexture(): THREE.Texture {
 /** equirect planet albedo by recipe */
 export function planetTexture(p: PlanetDef): THREE.Texture {
   if (p.kind === 'red-giant') return redGiantTexture(p);
+  if (p.kind === 'binary') return binaryTexture(p);
   const isStorm = p.kind === 'gas-storm';
   const W = isStorm ? 1024 : 512;
   const H = isStorm ? 512 : 256;
@@ -621,6 +622,131 @@ export function redGiantTexture(p: PlanetDef): THREE.Texture {
       img.data[i] = Math.min(255, rgb[0] * latMul);
       img.data[i + 1] = Math.min(255, rgb[1] * latMul);
       img.data[i + 2] = Math.min(255, rgb[2] * latMul);
+      img.data[i + 3] = 255;
+    }
+  }
+
+  g.putImageData(img, 0, 0);
+  const t = tex(c);
+  t.wrapS = THREE.RepeatWrapping;
+  return t;
+}
+
+/** equirect binary-system planet albedo (1024x512, zero external assets):
+ *  cool-blue / warm-orange dual hemispheres divided by a luminous twilight
+ *  cloud belt, high-frequency cloud tufts + fine filamentary cirrus streaks,
+ *  subtly darkened polar hoods, and twin sub-stellar glare spots (cool & warm). */
+export function binaryTexture(p: PlanetDef): THREE.Texture {
+  const W = 1024;
+  const H = 512;
+  const [c, g] = canvas(W, H);
+  const img = g.createImageData(W, H);
+
+  const nWarp = makeNoise(p.seed + 5, 8);
+  const nMid = makeNoise(p.seed + 19, 16);
+  const nCirrus = makeNoise(p.seed + 43, 32);
+  const nTuft = makeNoise(p.seed + 71, 64);
+  const nFine = makeNoise(p.seed + 107, 64);
+
+  const cols = p.colors.map((h) => [(h >> 16) & 255, (h >> 8) & 255, h & 255]);
+  const coolDeep = [22, 62, 132];
+  const coolMid = cols[0];
+  const coolHigh = [158, 214, 255];
+  const coolSpotCol = [234, 248, 255];
+  const warmDeep = [104, 42, 18];
+  const warmMid = cols[1];
+  const warmHigh = [255, 204, 140];
+  const warmSpotCol = [255, 238, 202];
+  const twilightCool = [212, 240, 255];
+  const twilightWarm = [255, 232, 198];
+
+  const mix = (a: number[], b: number[], t: number): number[] => [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+  ];
+  const ss = (a: number, b: number, x: number): number => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+
+  // Tilted dipole axis separating cool hemisphere (+1) and warm hemisphere (-1)
+  const ax = 0.963;
+  const ay = 0.27;
+
+  for (let y = 0; y < H; y++) {
+    const lat = (y + 0.5) / H;
+    const theta = lat * Math.PI;
+    const sinT = Math.sin(theta);
+    const cosT = Math.cos(theta);
+    const latOff = Math.abs(lat - 0.5);
+
+    for (let x = 0; x < W; x++) {
+      const uNorm = (x + 0.5) / W;
+      const phi = uNorm * Math.PI * 2;
+      // Spherical unit vector (matches Three.js SphereGeometry: u=0 -> -X, u=0.5 -> +X)
+      const sx = Math.cos(phi) * sinT;
+      const sy = cosT;
+
+      // Multi-scale atmospheric domain warp
+      const w1 = nWarp(uNorm * 8, lat * 4) - 0.5;
+      const w2 = nMid(uNorm * 16 + w1 * 1.4, lat * 8 + w1 * 0.9) - 0.5;
+      const shear = Math.sin(lat * Math.PI * 5 + w1 * 4.2) * 0.032;
+
+      // High-frequency cloud tufts + fine filamentary cirrus streaks
+      const deck = nMid(uNorm * 16 + shear * 8, lat * 12 + w1 * 1.1);
+      const tuft = nTuft(uNorm * 64 + w2 * 3.2, lat * 32 + w1 * 2.0);
+      const fine = nFine(uNorm * 64 + 13.7 + shear * 24, lat * 44 + 7.1 + w2 * 2.5);
+      const r1 = 1 - Math.abs(nCirrus(uNorm * 32 + shear * 18 + w1 * 2.2, lat * 26 + w2 * 1.6) * 2 - 1);
+      const r2 = 1 - Math.abs(nFine(uNorm * 64 - shear * 16 + w2 * 3.0, lat * 52 - w1 * 2.4) * 2 - 1);
+      const cirrus = Math.pow(r1, 2.5) * 0.62 + Math.pow(r2, 3.0) * 0.48;
+      const tuftMask = ss(0.42, 0.78, tuft * 0.68 + fine * 0.32);
+
+      // Hemisphere coordinate (+1 cool side, -1 warm side) warped organically by winds
+      const dipole = sx * ax + sy * ay;
+      const hemi = dipole + w1 * 0.24 + w2 * 0.11 + (tuft - 0.5) * 0.06;
+      const coolFrac = ss(-0.22, 0.22, hemi);
+
+      // Cool hemisphere cloud palette (non-uniform mottled deck + tufts + cirrus)
+      const coolBase = mix(coolDeep, coolMid, ss(0.22, 0.76, deck * 0.72 + tuft * 0.28));
+      let coolRgb = mix(coolBase, coolHigh, Math.min(1, tuftMask * 0.52 + cirrus * 0.58));
+
+      // Warm hemisphere cloud palette
+      const warmBase = mix(warmDeep, warmMid, ss(0.22, 0.76, deck * 0.72 + fine * 0.28));
+      let warmRgb = mix(warmBase, warmHigh, Math.min(1, tuftMask * 0.5 + cirrus * 0.56));
+
+      // Combine hemispheres
+      let rgb = mix(warmRgb, coolRgb, coolFrac);
+
+      // Luminous twilight dividing band along hemi ≈ 0 (textured with swirling cirrus)
+      const twiBand = Math.exp(-(hemi * hemi) / (0.145 * 0.145));
+      const twiCol = mix(twilightWarm, twilightCool, ss(-0.14, 0.14, hemi));
+      const twiStrength = twiBand * (0.48 + 0.42 * cirrus + 0.22 * tuftMask);
+      rgb = mix(rgb, twiCol, Math.min(0.92, twiStrength));
+
+      // Fine bright cirrus wisps overlaid across both hemispheres
+      const wispBoost = ss(0.45, 0.92, cirrus) * (0.28 + 0.34 * tuftMask);
+      rgb = mix(rgb, cols[2], Math.min(0.68, wispBoost));
+
+      // Twin sub-stellar direct-illumination highlight spots (one cool, one warm)
+      const coolSpot = ss(0.72, 0.985, dipole + (cirrus - 0.5) * 0.08 + (tuft - 0.5) * 0.05);
+      if (coolSpot > 0.001) {
+        rgb = mix(rgb, coolSpotCol, coolSpot * (0.62 + 0.26 * tuftMask));
+        rgb = mix(rgb, [255, 255, 255], ss(0.55, 1.0, coolSpot) * 0.45);
+      }
+      const warmSpot = ss(0.72, 0.985, -dipole + (cirrus - 0.5) * 0.08 + (fine - 0.5) * 0.05);
+      if (warmSpot > 0.001) {
+        rgb = mix(rgb, warmSpotCol, warmSpot * (0.62 + 0.26 * tuftMask));
+        rgb = mix(rgb, [255, 248, 232], ss(0.55, 1.0, warmSpot) * 0.42);
+      }
+
+      // Slightly darker polar hoods
+      const pole = ss(0.31, 0.49, latOff + w1 * 0.05);
+      const poleMul = 1 - 0.34 * pole;
+      const i = (y * W + x) * 4;
+      img.data[i] = Math.max(0, Math.min(255, rgb[0] * poleMul));
+      img.data[i + 1] = Math.max(0, Math.min(255, rgb[1] * poleMul));
+      img.data[i + 2] = Math.max(0, Math.min(255, rgb[2] * poleMul));
       img.data[i + 3] = 255;
     }
   }

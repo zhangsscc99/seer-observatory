@@ -3,11 +3,11 @@
 // observatory station exterior. Built from src/game/space.ts data.
 import * as THREE from 'three';
 import { mulberry32 } from '../game/rng.ts';
-import { beltRocks, PLANETS, STATION, SUN_DIR, SUN_DISTANCE, SUN_RADIUS, type PlanetDef } from '../game/space.ts';
+import { beltRocks, BINARY_STARS, PLANETS, STATION, SUN_DIR, SUN_DISTANCE, SUN_RADIUS, type BinaryStarDef, type PlanetDef } from '../game/space.ts';
 import { MAT, arc, glow } from './materials.ts';
 import { PAL } from './palette.ts';
 import { buildRings } from './rings.ts';
-import { flareTexture, planetTexture, radialTexture, redGiantTexture, rockTexture } from './textures.ts';
+import { binaryTexture, flareTexture, planetTexture, radialTexture, redGiantTexture, rockTexture } from './textures.ts';
 
 const sunDir = new THREE.Vector3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z);
 
@@ -206,6 +206,103 @@ void main() {
   float wisp = vnoise3(n * 5.0 + vec3(uTime * 0.06, uTime * 0.04, uTime * 0.05));
   float a = day * (0.35 + 0.65 * wisp) * 0.12;
   gl_FragColor = vec4(uAtmo, a);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+
+// self-luminous twin star photosphere: incandescent white-hot core fading to
+// color-temperature outer disc with subtle boiling plasma shimmer
+const BINARY_STAR_FRAG = /* glsl */ `
+uniform vec3 uColor; uniform float uIntensity; uniform float uTime;
+varying vec3 vN; varying vec3 vW;
+float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float vnoise3(vec3 p) {
+  vec3 i = floor(p); vec3 f = fract(p);
+  vec3 u = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(hash3(i), hash3(i + vec3(1.0, 0.0, 0.0)), u.x), mix(hash3(i + vec3(0.0, 1.0, 0.0)), hash3(i + vec3(1.0, 1.0, 0.0)), u.x), u.y),
+    mix(mix(hash3(i + vec3(0.0, 0.0, 1.0)), hash3(i + vec3(1.0, 0.0, 1.0)), u.x), mix(hash3(i + vec3(0.0, 1.0, 1.0)), hash3(i + vec3(1.0, 1.0, 1.0)), u.x), u.y),
+    u.z);
+}
+void main() {
+  vec3 n = normalize(vN);
+  vec3 v = normalize(cameraPosition - vW);
+  float ndv = max(dot(n, v), 0.0);
+  float boil = vnoise3(n * 8.5 + vec3(uTime * 0.25, -uTime * 0.18, uTime * 0.21));
+  float fine = vnoise3(n * 22.0 - vec3(uTime * 0.35, uTime * 0.28, -uTime * 0.19));
+  float core = pow(ndv, 0.58);
+  vec3 hotCore = mix(uColor, vec3(1.0, 0.99, 0.97), 0.68 * core);
+  float shimmer = 0.92 + 0.14 * boil + 0.08 * fine;
+  float limbGlow = pow(1.0 - ndv, 2.4) * 0.55;
+  vec3 col = (hotCore * (1.15 + 0.55 * core) * shimmer + uColor * limbGlow) * uIntensity;
+  gl_FragColor = vec4(col, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+
+// binary-system planet: dual-star cool/warm illumination, subtle cirrus drift,
+// dual-sided fresnel rim (cool on star-A side, warm on star-B side), night >= 0.08
+const BINARY_PLANET_FRAG = /* glsl */ `
+uniform sampler2D uMap;
+uniform vec3 uStarA; uniform vec3 uColA;
+uniform vec3 uStarB; uniform vec3 uColB;
+uniform float uTime;
+varying vec3 vN; varying vec3 vW; varying vec2 vUv;
+void main() {
+  vec3 n = normalize(vN);
+  vec3 v = normalize(cameraPosition - vW);
+  float ndlA = dot(n, uStarA);
+  float ndlB = dot(n, uStarB);
+  float dayA = smoothstep(-0.12, 0.42, ndlA);
+  float dayB = smoothstep(-0.12, 0.42, ndlB);
+
+  // gentle differential cirrus drift so clouds feel alive without smearing detail
+  float lat = (vUv.y - 0.5) * 2.0;
+  float drift = uTime * 0.0022 * (1.0 - 0.45 * lat * lat);
+  vec2 uv1 = vec2(vUv.x + drift, clamp(vUv.y, 0.001, 0.999));
+  vec2 uv2 = vec2(vUv.x + drift * 1.9 + 0.002 * sin(vUv.y * 20.0 + uTime * 0.15), clamp(vUv.y, 0.001, 0.999));
+  vec3 albedo = mix(texture2D(uMap, uv1).rgb, texture2D(uMap, uv2).rgb, 0.20);
+
+  // dual-color-temperature lighting with guaranteed night-side floor (>= 0.08)
+  vec3 ambient = vec3(0.09, 0.10, 0.13);
+  vec3 lightA = uColA * dayA * 0.88;
+  vec3 lightB = uColB * dayB * 0.74;
+  vec3 col = albedo * (ambient + lightA + lightB);
+
+  // subtle twin-star specular glints on high cirrus clouds
+  float specA = pow(max(dot(n, normalize(v + uStarA)), 0.0), 42.0) * 0.22 * dayA;
+  float specB = pow(max(dot(n, normalize(v + uStarB)), 0.0), 36.0) * 0.20 * dayB;
+  col += uColA * specA + uColB * specB;
+
+  // dual-sided fresnel inner rim: cool cyan-blue on star-A face, warm amber-orange on star-B face
+  float fres = pow(1.0 - max(dot(n, v), 0.0), 2.5);
+  float rimA = smoothstep(-0.32, 0.36, ndlA);
+  float rimB = smoothstep(-0.32, 0.36, ndlB);
+  col += vec3(0.56, 0.84, 1.0) * fres * rimA * 0.78;
+  col += vec3(1.0, 0.66, 0.34) * fres * rimB * 0.72;
+  // subtle night-side indigo scatter so silhouette stays crisp
+  col += vec3(0.18, 0.26, 0.42) * fres * (1.0 - max(rimA, rimB)) * 0.16;
+
+  gl_FragColor = vec4(col, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+
+// dual-tinted outer halo shell for the binary planet (BackSide, additive)
+const BINARY_HALO_FRAG = /* glsl */ `
+uniform vec3 uStarA; uniform vec3 uColA;
+uniform vec3 uStarB; uniform vec3 uColB;
+uniform float uEdge; uniform float uPow; uniform float uGain;
+varying vec3 vN; varying vec3 vW;
+void main() {
+  vec3 n = normalize(vN);
+  vec3 v = normalize(cameraPosition - vW);
+  float d = clamp(-dot(n, v) / uEdge, 0.0, 1.0);
+  float a = pow(d, uPow);
+  float litA = smoothstep(-0.35, 0.35, dot(n, uStarA));
+  float litB = smoothstep(-0.35, 0.35, dot(n, uStarB));
+  vec3 tint = uColA * litA * 0.85 + uColB * litB * 0.80;
+  gl_FragColor = vec4(tint * a * uGain, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
@@ -527,6 +624,88 @@ function haloShell(p: PlanetDef, scale: number, peakPow: number, gain: number, a
   );
 }
 
+function starHaloShell(radius: number, scale: number, peakPow: number, gain: number, color: THREE.Color): THREE.Mesh {
+  return new THREE.Mesh(
+    new THREE.SphereGeometry(radius * scale, 40, 28),
+    new THREE.ShaderMaterial({
+      vertexShader: PLANET_VERT,
+      fragmentShader: HALO_FRAG,
+      uniforms: {
+        uSun: { value: sunDir },
+        uAtmo: { value: color },
+        uEdge: { value: Math.sqrt(1 - 1 / (scale * scale)) },
+        uPow: { value: peakPow },
+        uGain: { value: gain },
+        uSelfLit: { value: 1 },
+      },
+      side: THREE.BackSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    }),
+  );
+}
+
+/** self-luminous twin star with 1.14R / 1.28R paired corona halos + billboard flare */
+function buildBinaryStar(s: BinaryStarDef): { group: THREE.Group; mat: THREE.ShaderMaterial; flare: THREE.Sprite; baseScale: number } {
+  const g = new THREE.Group();
+  g.name = s.id;
+  g.position.set(s.pos.x, s.pos.y, s.pos.z);
+  const col = new THREE.Color(s.color);
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: PLANET_VERT,
+    fragmentShader: BINARY_STAR_FRAG,
+    uniforms: {
+      uColor: { value: col },
+      uIntensity: { value: s.intensity },
+      uTime: { value: 0 },
+    },
+  });
+  const sphere = new THREE.Mesh(new THREE.SphereGeometry(s.radius, 48, 32), mat);
+  const haloInner = starHaloShell(s.radius, 1.14, 3.2, 0.72, col);
+  const haloOuter = starHaloShell(s.radius, 1.28, 1.9, 0.48, col);
+  const baseScale = s.radius * (s.intensity > 1.8 ? 6.2 : 5.6);
+  const flare = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: flareTexture(),
+      color: col,
+      opacity: s.intensity > 1.8 ? 0.72 : 0.68,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      transparent: true,
+    }),
+  );
+  flare.scale.setScalar(baseScale);
+  g.add(sphere, haloInner, haloOuter, flare);
+  return { group: g, mat, flare, baseScale };
+}
+
+function binaryHaloShell(
+  p: PlanetDef,
+  scale: number,
+  peakPow: number,
+  gain: number,
+  starA: THREE.Vector3,
+  colA: THREE.Color,
+  starB: THREE.Vector3,
+  colB: THREE.Color,
+): THREE.Mesh {
+  return new THREE.Mesh(
+    new THREE.SphereGeometry(p.radius * scale, 48, 32),
+    new THREE.ShaderMaterial({
+      vertexShader: PLANET_VERT,
+      fragmentShader: BINARY_HALO_FRAG,
+      uniforms: {
+        uStarA: { value: starA },
+        uColA: { value: colA },
+        uStarB: { value: starB },
+        uColB: { value: colB },
+        uEdge: { value: Math.sqrt(1 - 1 / (scale * scale)) },
+        uPow: { value: peakPow },
+        uGain: { value: gain },
+      },
+      side: THREE.BackSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    }),
+  );
+}
+
 function buildPlanet(p: PlanetDef): THREE.Group {
   const g = new THREE.Group();
   g.position.set(p.pos.x, p.pos.y, p.pos.z);
@@ -567,6 +746,37 @@ function buildPlanet(p: PlanetDef): THREE.Group {
 
     g.add(surface, wideHalo, narrowHalo, prom.mesh, veil.group, starFlare);
     g.userData.timeMats = [surfaceMat, prom.material, veil.shellMat];
+    return g;
+  }
+
+  if (p.kind === 'binary') {
+    const sA = BINARY_STARS[0];
+    const sB = BINARY_STARS[1];
+    const dirA = new THREE.Vector3(sA.pos.x - p.pos.x, sA.pos.y - p.pos.y, sA.pos.z - p.pos.z).normalize();
+    const dirB = new THREE.Vector3(sB.pos.x - p.pos.x, sB.pos.y - p.pos.y, sB.pos.z - p.pos.z).normalize();
+    const colA = new THREE.Color(sA.color);
+    const colB = new THREE.Color(sB.color);
+    const surfaceMat = new THREE.ShaderMaterial({
+      vertexShader: PLANET_VERT,
+      fragmentShader: BINARY_PLANET_FRAG,
+      uniforms: {
+        uMap: { value: binaryTexture(p) },
+        uStarA: { value: dirA },
+        uColA: { value: colA },
+        uStarB: { value: dirB },
+        uColB: { value: colB },
+        uTime: { value: 0 },
+      },
+    });
+    const surface = new THREE.Mesh(new THREE.SphereGeometry(p.radius, 64, 40), surfaceMat);
+    surface.name = 'surface';
+    // align cool hemisphere toward primary star A, warm hemisphere toward companion B
+    surface.rotation.y = 0.55;
+    surface.rotation.z = 0.16;
+    const wideHalo = binaryHaloShell(p, HALO_SCALE, 3.0, 0.44, dirA, colA, dirB, colB);
+    const narrowHalo = binaryHaloShell(p, HALO_SCALE_NARROW, 5.4, 0.36, dirA, colA, dirB, colB);
+    g.add(surface, wideHalo, narrowHalo);
+    g.userData.timeMats = [surfaceMat];
     return g;
   }
 
@@ -724,6 +934,9 @@ export function buildSpace(): SpaceView {
   corona.scale.setScalar(SUN_RADIUS * 7);
   far.add(sun, corona, flare);
 
+  const binaryStars = BINARY_STARS.map(buildBinaryStar);
+  for (const bs of binaryStars) far.add(bs.group);
+
   const planets = PLANETS.map(buildPlanet);
   far.add(...planets);
   far.add(buildBelt());
@@ -741,10 +954,31 @@ export function buildSpace(): SpaceView {
   const beacon = station.getObjectByName('beacon')!;
 
   // lighting for lit meshes in flight (ship, rocks, station)
-  const sunLight = new THREE.DirectionalLight(0xfff4e0, 2.6);
-  sunLight.position.copy(sunDir).multiplyScalar(100);
+  const baseSunColor = new THREE.Color(0xfff4e0);
+  const coolStarColor = new THREE.Color(BINARY_STARS[0].color);
+  const warmStarColor = new THREE.Color(BINARY_STARS[1].color);
+  const sunLight = new THREE.DirectionalLight(baseSunColor, 2.6);
+  const baseSunPos = sunDir.clone().multiplyScalar(100);
+  sunLight.position.copy(baseSunPos);
   const fill = new THREE.HemisphereLight(0xbfd4ff, 0x5a4a9a, 1.25);
   near.add(sunLight, sunLight.target, fill);
+  // local warm-orange DirectionalLight for the binary system (in `near`, so cabin is isolated,
+  // and smoothly attenuated by ship distance to binary center so the rest of the sector stays untouched)
+  const binaryPlanet = PLANETS.find((p) => p.kind === 'binary');
+  const binaryCenter = binaryPlanet ? new THREE.Vector3(binaryPlanet.pos.x, binaryPlanet.pos.y, binaryPlanet.pos.z) : null;
+  const binaryCoolPos = binaryCenter
+    ? new THREE.Vector3(
+        BINARY_STARS[0].pos.x - binaryCenter.x,
+        BINARY_STARS[0].pos.y - binaryCenter.y,
+        BINARY_STARS[0].pos.z - binaryCenter.z,
+      )
+        .normalize()
+        .multiplyScalar(100)
+    : baseSunPos.clone();
+  const binaryWarmDir = new THREE.Vector3(BINARY_STARS[1].pos.x, BINARY_STARS[1].pos.y, BINARY_STARS[1].pos.z).normalize();
+  const binaryWarmLight = new THREE.DirectionalLight(warmStarColor, 0);
+  binaryWarmLight.position.copy(binaryWarmDir).multiplyScalar(100);
+  near.add(binaryWarmLight, binaryWarmLight.target);
   // local warm-orange PointLight on red-giant star (range-limited so it never pollutes cabin/origin)
   for (const p of PLANETS) {
     if (p.kind !== 'red-giant') continue;
@@ -809,6 +1043,20 @@ export function buildSpace(): SpaceView {
       markerMat.opacity = 0.55 + 0.25 * Math.sin(t * 2.4);
       flare.material.rotation = t * 0.02;
       flare.scale.setScalar(SUN_RADIUS * (14 + Math.sin(t * 0.9) * 0.8));
+      binaryStars.forEach((bs, idx) => {
+        bs.mat.uniforms.uTime.value = t;
+        bs.flare.material.rotation = t * (idx === 0 ? 0.026 : -0.031);
+        bs.flare.scale.setScalar(bs.baseScale * (1 + 0.04 * Math.sin(t * (idx === 0 ? 0.85 : 1.05) + idx * 1.7)));
+      });
+      if (binaryCenter) {
+        // smooth distance attenuation: full dual-temperature lighting <= 550, zero >= 1100
+        const dBin = shipPos.distanceTo(binaryCenter);
+        const u = Math.max(0, Math.min(1, (dBin - 550) / (1100 - 550)));
+        const w = 1 - u * u * (3 - 2 * u);
+        binaryWarmLight.intensity = 1.5 * w;
+        sunLight.color.copy(baseSunColor).lerp(coolStarColor, w);
+        sunLight.position.copy(baseSunPos).lerp(binaryCoolPos, w);
+      }
       beacon.scale.setScalar(1 + 0.5 * Math.max(0, Math.sin(t * 3)));
       // wrap dust into the box centred on the ship
       const h = DUST_BOX / 2;
