@@ -23,14 +23,34 @@ void main() {
 
 // lit surface + inner fresnel rim tinted by the atmosphere
 const PLANET_FRAG = /* glsl */ `
-uniform sampler2D uMap; uniform vec3 uSun; uniform vec3 uAtmo; uniform float uGlow; uniform float uSpec;
+uniform sampler2D uMap; uniform vec3 uSun; uniform vec3 uAtmo; uniform float uGlow; uniform float uSpec; uniform float uTime; uniform float uStorm;
 varying vec3 vN; varying vec3 vW; varying vec2 vUv;
 void main() {
   vec3 n = normalize(vN);
   vec3 v = normalize(cameraPosition - vW);
   float ndl = dot(n, uSun);
   float day = smoothstep(-0.06, 0.30, ndl);
-  vec3 albedo = texture2D(uMap, vUv).rgb;
+  vec3 albedo;
+  if (uStorm > 0.5) {
+    float lat = (vUv.y - 0.5) * 2.0;
+    float jet = 1.0 - 0.65 * lat * lat;
+    vec2 uv1 = vec2(vUv.x + uTime * 0.006 * jet, clamp(vUv.y, 0.001, 0.999));
+    vec2 dEye = vec2(mod(uv1.x - 0.62 + 0.5, 1.0) - 0.5, uv1.y - 0.42);
+    vec2 eNorm = dEye / vec2(0.082, 0.046);
+    float r = length(eNorm);
+    float eyeMask = smoothstep(1.25, 0.15, r);
+    float ang = uTime * 0.45 * smoothstep(1.25, 0.1, r);
+    float ca = cos(ang), sa = sin(ang);
+    vec2 rotNorm = mat2(ca, -sa, sa, ca) * eNorm * (1.0 - 0.05 * eyeMask * sin(uTime * 1.1));
+    vec2 uvEye = vec2(0.62 + rotNorm.x * 0.082, clamp(0.42 + rotNorm.y * 0.046, 0.001, 0.999));
+    vec3 baseCol = texture2D(uMap, mix(uv1, uvEye, eyeMask)).rgb;
+    float shear = 0.004 * sin(vUv.y * 26.0 + uTime * 0.28);
+    vec2 uv2 = vec2(vUv.x + uTime * 0.012 * jet + shear, clamp(vUv.y + 0.003 * cos(vUv.x * 18.84955 + uTime * 0.15), 0.001, 0.999));
+    vec3 upperCol = texture2D(uMap, uv2).rgb;
+    albedo = mix(baseCol, upperCol, 0.28 * (1.0 - eyeMask * 0.85));
+  } else {
+    albedo = texture2D(uMap, vUv).rgb;
+  }
   vec3 col = albedo * (0.10 + 0.92 * day);
   col += albedo * uGlow * (1.0 - day) * smoothstep(0.55, 1.0, albedo.r); // night-side emissive (lava)
   float spec = pow(max(dot(n, normalize(v + uSun)), 0.0), 48.0) * 0.18 * day;
@@ -120,15 +140,21 @@ function buildPlanet(p: PlanetDef): THREE.Group {
         uSun: { value: sunDir },
         uAtmo: { value: atmo },
         uGlow: { value: p.kind === 'lava' ? 0.9 : 0 },
-        uSpec: { value: p.kind === 'ice-ring' || p.kind === 'ice' || p.kind === 'gas' ? 1 : 0 },
+        uSpec: { value: p.kind === 'ice-ring' || p.kind === 'ice' || p.kind === 'gas' ? 1 : p.kind === 'gas-storm' ? 0.45 : 0 },
+        uTime: { value: 0 },
+        uStorm: { value: p.kind === 'gas-storm' ? 1 : 0 },
       },
     }),
   );
   surface.name = 'surface';
   surface.rotation.z = 0.25;
-  const halo = haloShell(p, HALO_SCALE, 3.2, 0.45, atmo);
+  const halo = haloShell(p, HALO_SCALE, 3.2, p.kind === 'gas-storm' ? 0.42 : 0.45, atmo);
   g.add(surface, halo);
   const timeMats: THREE.ShaderMaterial[] = [];
+  if (p.kind === 'gas-storm') {
+    g.add(haloShell(p, HALO_SCALE_NARROW, 5.5, 0.36, atmo));
+    timeMats.push(surface.material as THREE.ShaderMaterial);
+  }
   if (p.kind === 'ice-ring') {
     // dual halo: narrow bright rim (sharper peak) inside the wide mist
     g.add(haloShell(p, HALO_SCALE_NARROW, 6.0, 0.5, atmo));

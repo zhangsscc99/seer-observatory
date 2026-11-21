@@ -328,8 +328,10 @@ export function planetTexture(p: PlanetDef): THREE.Texture {
   };
   for (let y = 0; y < H; y++) {
     const lat = y / H;
+    const vNorm = 1 - lat;
     for (let x = 0; x < W; x++) {
-      const u = (x / W) * 8;
+      const uNorm = x / W;
+      const u = uNorm * 8;
       const v = lat * 4;
       let rgb: number[];
       if (p.kind === 'gas') {
@@ -337,6 +339,43 @@ export function planetTexture(p: PlanetDef): THREE.Texture {
         const band = Math.sin((lat + warp * 0.08) * 34) * 0.5 + 0.5;
         const storm = ss(0.62, 0.8, n2(u * 0.7, v * 2.2));
         rgb = mix(mix(cols[0], cols[1], band), cols[2], Math.min(1, storm + ss(0.75, 1, band) * 0.5));
+      } else if (p.kind === 'gas-storm') {
+        const warp = (n(u, v) - 0.5) * 0.6;
+        const wLat = vNorm + warp * 0.09;
+        const b1 = Math.sin(wLat * Math.PI * 7.0 + n2(u * 0.6, v * 1.4) * 1.1);
+        const b2 = Math.sin(wLat * Math.PI * 15.0 - warp * 2.4);
+        const b3 = Math.sin(wLat * Math.PI * 29.0 + n(u * 1.8, v * 3.0) * 1.8);
+        const turb = n2(u * 3.2, v * 5.6) * 2.0 - 1.0;
+        const bandVal = 0.5 + 0.28 * b1 + 0.14 * b2 + 0.06 * b3 + 0.055 * turb;
+        rgb = mix(mix(cols[0], cols[1], ss(0.20, 0.56, bandVal)), cols[2], ss(0.56, 0.90, bandVal));
+        const fine = (n2(u * 5.0, v * 8.0) - 0.5) * 0.12;
+        rgb = [
+          Math.max(0, Math.min(255, rgb[0] * (1 + fine))),
+          Math.max(0, Math.min(255, rgb[1] * (1 + fine))),
+          Math.max(0, Math.min(255, rgb[2] * (1 + fine))),
+        ];
+        // darker polar hoods
+        const pole = ss(0.32, 0.48, Math.abs(vNorm - 0.5));
+        rgb = mix(rgb, [cols[0][0] * 0.7, cols[0][1] * 0.7, cols[0][2] * 0.7], pole * 0.75);
+        // giant anticyclonic storm eye at u≈0.62, v≈0.42 (w≈0.16, h≈0.09)
+        let du = uNorm - 0.62;
+        du -= Math.round(du);
+        const dv = vNorm - 0.42;
+        const ex = du / 0.08;
+        const ey = dv / 0.045;
+        const er = Math.hypot(ex, ey);
+        if (er < 1.35) {
+          const ang = Math.atan2(ey, ex);
+          const swirlAng = ang + (1.35 - er) * 3.4;
+          const sn = n2(Math.cos(swirlAng) * er * 1.4 + 4, Math.sin(swirlAng) * er * 1.4 + 4);
+          const arm = 0.5 + 0.5 * Math.sin(swirlAng * 3.0 + sn * 3.2);
+          const ringMask = ss(0.58, 0.88, er) * (1 - ss(0.96, 1.32, er));
+          rgb = mix(rgb, [cols[0][0] * 0.66, cols[0][1] * 0.66, cols[0][2] * 0.66], ringMask * 0.82);
+          const bodyMask = 1 - ss(0.62, 1.02, er);
+          const swirlCol = mix(cols[1], cols[2], 0.35 + 0.65 * (arm * 0.55 + sn * 0.45));
+          const eyeCol = mix(swirlCol, [255, 245, 224], ss(0.45, 0.0, er) * 0.75);
+          rgb = mix(rgb, eyeCol, bodyMask);
+        }
       } else if (p.kind === 'ocean') {
         const hgt = n(u, v);
         const land = ss(0.5, 0.56, hgt);
