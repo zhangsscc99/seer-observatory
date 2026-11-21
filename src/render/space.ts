@@ -7,7 +7,7 @@ import { beltRocks, PLANETS, STATION, SUN_DIR, SUN_DISTANCE, SUN_RADIUS, type Pl
 import { MAT, arc, glow } from './materials.ts';
 import { PAL } from './palette.ts';
 import { buildRings } from './rings.ts';
-import { flareTexture, planetTexture, radialTexture, rockTexture } from './textures.ts';
+import { flareTexture, planetTexture, radialTexture, redGiantTexture, rockTexture } from './textures.ts';
 
 const sunDir = new THREE.Vector3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z);
 
@@ -65,9 +65,9 @@ void main() {
 }`;
 
 // outer halo shell (BackSide, additive): peaks at the planet limb, fades
-// outward. Lit side only (no baseline); the terminator scatters ~8% warmer.
+// outward. Lit side only for planets; full 360° when uSelfLit = 1 (stars).
 const HALO_FRAG = /* glsl */ `
-uniform vec3 uSun; uniform vec3 uAtmo; uniform float uEdge; uniform float uPow; uniform float uGain;
+uniform vec3 uSun; uniform vec3 uAtmo; uniform float uEdge; uniform float uPow; uniform float uGain; uniform float uSelfLit;
 varying vec3 vN; varying vec3 vW;
 void main() {
   vec3 n = normalize(vN);
@@ -75,10 +75,114 @@ void main() {
   float d = clamp(-dot(n, v) / uEdge, 0.0, 1.0);
   float a = pow(d, uPow);
   float ndl = dot(n, uSun);
-  float lit = smoothstep(-0.35, 0.30, ndl);
-  float term = smoothstep(0.25, 0.85, 1.0 - abs(ndl));
+  float lit = mix(smoothstep(-0.35, 0.30, ndl), 1.0, uSelfLit);
+  float term = smoothstep(0.25, 0.85, 1.0 - abs(ndl)) * (1.0 - uSelfLit);
   vec3 tint = mix(uAtmo, uAtmo * vec3(1.08, 1.0, 0.92), term);
   gl_FragColor = vec4(tint * a * lit * uGain, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+
+// self-luminous red-giant photosphere: slow convection flow + limb darkening
+// (edges darker & redder via pow(1 - dot(N, V), 1.6)), no sunDir diffuse term.
+const RED_GIANT_FRAG = /* glsl */ `
+uniform sampler2D uMap; uniform float uTime; uniform float uGlow; uniform vec3 uAtmo;
+varying vec3 vN; varying vec3 vW; varying vec2 vUv;
+void main() {
+  vec3 n = normalize(vN);
+  vec3 v = normalize(cameraPosition - vW);
+  float flow = uTime * 0.02;
+  vec2 uv1 = vec2(
+    vUv.x + flow * 0.14 + 0.003 * sin(vUv.y * 18.0 + flow * 1.1),
+    clamp(vUv.y + 0.0025 * cos(vUv.x * 25.1327 + flow * 0.9), 0.001, 0.999)
+  );
+  vec2 uv2 = vec2(
+    uv1.x - flow * 0.09 + 0.004 * cos(vUv.y * 28.0 - flow * 1.3),
+    clamp(uv1.y + 0.003 * sin(vUv.x * 37.699 + flow * 1.2), 0.001, 0.999)
+  );
+  vec3 baseCol = texture2D(uMap, uv1).rgb;
+  vec3 boilCol = texture2D(uMap, uv2).rgb;
+  vec3 albedo = mix(baseCol, boilCol, 0.18);
+
+  float ndv = max(dot(n, v), 0.0);
+  float limb = pow(1.0 - ndv, 1.6);
+  // center stays hot incandescent orange-cream; limb darkens and shifts deeper crimson-red
+  float limbDark = mix(1.0, 0.34, limb);
+  vec3 limbTint = mix(vec3(1.0, 1.0, 1.0), vec3(0.86, 0.24, 0.06), limb);
+
+  // extra radiance on hot flare cores so they read incandescent through ACES
+  float hotCore = smoothstep(0.68, 0.96, albedo.g);
+  vec3 col = albedo * (uGlow + hotCore * 0.85) * limbDark * limbTint;
+  // subtle fiery chromosphere rim right at the silhouette edge
+  float chromo = pow(1.0 - ndv, 4.2);
+  col += uAtmo * vec3(1.15, 0.48, 0.16) * chromo * 0.42;
+
+  gl_FragColor = vec4(col, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+
+// coronal prominence arch ribbons (additive, gentle breathing with uTime)
+const PROMINENCE_VERT = /* glsl */ `
+attribute float aPhase;
+uniform float uTime;
+varying vec2 vUv;
+varying float vPhase;
+void main() {
+  vUv = uv;
+  vPhase = aPhase;
+  float arch = sin(uv.x * 3.14159265);
+  float pulse = 1.0 + 0.045 * sin(uTime * 0.9 + aPhase + uv.x * 3.14159) * arch;
+  vec3 pos = position * pulse;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+}`;
+
+const PROMINENCE_FRAG = /* glsl */ `
+uniform float uTime;
+varying vec2 vUv;
+varying float vPhase;
+void main() {
+  float across = sin(vUv.y * 3.14159265);
+  float ends = smoothstep(0.0, 0.14, vUv.x) * smoothstep(1.0, 0.86, vUv.x);
+  float stream = 0.68 + 0.32 * sin(vUv.x * 16.0 - uTime * 1.15 + vPhase * 2.0 + vUv.y * 4.5);
+  float wisp = 0.72 + 0.28 * sin(vUv.x * 29.0 + uTime * 0.65 - vUv.y * 9.0 + vPhase);
+  float breathe = 0.82 + 0.18 * sin(uTime * 0.75 + vPhase);
+  float core = pow(across, 1.8) * ends * stream * wisp * breathe;
+  vec3 col = mix(vec3(0.95, 0.22, 0.05), vec3(1.0, 0.76, 0.34), pow(across, 2.2) * stream);
+  gl_FragColor = vec4(col * core * 1.15, core);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+
+// backlit warm dust veil shell (radius ~2.6R, transparent, depthWrite: false)
+// keeps center sightline clear while revealing warm backlit grain toward the limbs
+const DUST_VEIL_FRAG = /* glsl */ `
+uniform vec3 uAtmo; uniform vec3 uCenter; uniform float uTime;
+varying vec3 vN; varying vec3 vW;
+float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float vnoise3(vec3 p) {
+  vec3 i = floor(p); vec3 f = fract(p);
+  vec3 u = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(hash3(i), hash3(i + vec3(1.0, 0.0, 0.0)), u.x), mix(hash3(i + vec3(0.0, 1.0, 0.0)), hash3(i + vec3(1.0, 1.0, 0.0)), u.x), u.y),
+    mix(mix(hash3(i + vec3(0.0, 0.0, 1.0)), hash3(i + vec3(1.0, 0.0, 1.0)), u.x), mix(hash3(i + vec3(0.0, 1.0, 1.0)), hash3(i + vec3(1.0, 1.0, 1.0)), u.x), u.y),
+    u.z);
+}
+void main() {
+  vec3 n = normalize(vN);
+  vec3 v = normalize(cameraPosition - vW);
+  float ndv = abs(dot(n, v));
+  // low opacity straight through center so the star face stays crisp; richer dusty ring off-center
+  float ring = smoothstep(0.96, 0.34, ndv) * smoothstep(0.03, 0.26, ndv);
+  vec3 dir = normalize(vW - uCenter);
+  float drift = uTime * 0.015;
+  float cloud = vnoise3(dir * 5.5 + vec3(drift, -drift * 0.6, drift * 0.8));
+  float fine = vnoise3(dir * 26.0 - vec3(drift * 1.4, drift, -drift * 0.9));
+  float grain = smoothstep(0.52, 0.94, vnoise3(dir * 78.0 + vec3(drift * 2.0, 0.0, -drift * 1.5)));
+  // backlit warm amber-copper dust with subtle sunlit bright motes
+  vec3 dustCol = mix(uAtmo * vec3(0.75, 0.42, 0.24), vec3(1.0, 0.78, 0.48), grain * 0.75 + cloud * 0.25);
+  float alpha = (0.045 + ring * 0.24) * (0.42 + 0.58 * cloud) * (0.65 + 0.35 * fine) + grain * ring * 0.14;
+  gl_FragColor = vec4(dustCol, clamp(alpha, 0.0, 0.34));
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
@@ -109,6 +213,163 @@ void main() {
 const HALO_SCALE = 1.16;
 const HALO_SCALE_NARROW = 1.05;
 const FROST_SCALE = 1.02;
+const DUST_VEIL_SCALE = 2.6;
+
+/** procedural coronal prominence arch ribbons (5 magnetic plasma loops in 1 draw call) */
+function buildProminences(p: PlanetDef): { mesh: THREE.Mesh; material: THREE.ShaderMaterial } {
+  // 5 loops distributed around the limb (especially visible from the focusPlanet approach) and upper/lower latitudes
+  const specs: { dir: [number, number, number]; tang: [number, number, number]; span: number; apex: number; width: number; phase: number }[] = [
+    { dir: [-0.84, 0.32, -0.44], tang: [0.22, 0.92, -0.32], span: 0.36, apex: 0.30, width: 0.068, phase: 0.4 },
+    { dir: [0.76, 0.44, 0.48], tang: [-0.34, 0.88, -0.34], span: 0.32, apex: 0.25, width: 0.058, phase: 1.9 },
+    { dir: [0.58, -0.72, 0.38], tang: [0.74, 0.56, -0.37], span: 0.34, apex: 0.28, width: 0.062, phase: 3.3 },
+    { dir: [-0.66, -0.58, -0.48], tang: [-0.62, 0.76, -0.18], span: 0.28, apex: 0.21, width: 0.052, phase: 4.7 },
+    { dir: [-0.14, 0.92, 0.36], tang: [0.96, 0.16, -0.22], span: 0.30, apex: 0.23, width: 0.054, phase: 5.8 },
+  ];
+
+  const segs = 28;
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const phases: number[] = [];
+  const indices: number[] = [];
+  let vBase = 0;
+
+  const cVec = new THREE.Vector3();
+  const tVec = new THREE.Vector3();
+  const bVec = new THREE.Vector3();
+  const pt = new THREE.Vector3();
+  const prevPt = new THREE.Vector3();
+  const nextPt = new THREE.Vector3();
+  const loopTan = new THREE.Vector3();
+  const sideA = new THREE.Vector3();
+  const sideB = new THREE.Vector3();
+  const ribbonDir = new THREE.Vector3();
+
+  const archPoint = (out: THREE.Vector3, c: THREE.Vector3, t: THREE.Vector3, span: number, apex: number, u: number): void => {
+    const theta = (u - 0.5) * 2 * span;
+    const elev = Math.pow(Math.sin(u * Math.PI), 0.78);
+    const r = p.radius * (0.96 + apex * elev);
+    out.copy(c).multiplyScalar(Math.cos(theta)).addScaledVector(t, Math.sin(theta)).normalize().multiplyScalar(r);
+  };
+
+  for (const s of specs) {
+    cVec.set(s.dir[0], s.dir[1], s.dir[2]).normalize();
+    tVec.set(s.tang[0], s.tang[1], s.tang[2]);
+    // orthogonalize tangent against surface normal
+    tVec.addScaledVector(cVec, -tVec.dot(cVec)).normalize();
+    bVec.crossVectors(cVec, tVec).normalize();
+
+    // build two crossed ribbons (0° and 65° about the arch tangent) so the loop reads from any camera angle
+    for (const crossAng of [0, 1.13]) {
+      const ca = Math.cos(crossAng);
+      const sa = Math.sin(crossAng);
+      for (let i = 0; i <= segs; i++) {
+        const u = i / segs;
+        archPoint(pt, cVec, tVec, s.span, s.apex, u);
+        archPoint(prevPt, cVec, tVec, s.span, s.apex, Math.max(0, u - 0.02));
+        archPoint(nextPt, cVec, tVec, s.span, s.apex, Math.min(1, u + 0.02));
+        loopTan.subVectors(nextPt, prevPt).normalize();
+        sideA.copy(bVec);
+        sideB.crossVectors(loopTan, sideA).normalize();
+        ribbonDir.copy(sideA).multiplyScalar(ca).addScaledVector(sideB, sa).normalize();
+
+        const halfW = p.radius * s.width * (0.55 + 0.45 * Math.sin(u * Math.PI));
+        for (const side of [-1, 1]) {
+          positions.push(
+            pt.x + ribbonDir.x * halfW * side,
+            pt.y + ribbonDir.y * halfW * side,
+            pt.z + ribbonDir.z * halfW * side,
+          );
+          uvs.push(u, side < 0 ? 0 : 1);
+          phases.push(s.phase);
+        }
+        if (i < segs) {
+          const k = vBase + i * 2;
+          indices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+        }
+      }
+      vBase += (segs + 1) * 2;
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setAttribute('aPhase', new THREE.Float32BufferAttribute(phases, 1));
+  geo.setIndex(indices);
+
+  const material = new THREE.ShaderMaterial({
+    vertexShader: PROMINENCE_VERT,
+    fragmentShader: PROMINENCE_FRAG,
+    uniforms: { uTime: { value: 0 } },
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.name = 'prominences';
+  return { mesh, material };
+}
+
+/** warm backlit dust veil (~2.6R thin shell + granular backlit dust motes) */
+function buildDustVeil(p: PlanetDef, atmo: THREE.Color): { group: THREE.Group; shellMat: THREE.ShaderMaterial; motes: THREE.Points } {
+  const group = new THREE.Group();
+  group.name = 'dustVeil';
+
+  const shellMat = new THREE.ShaderMaterial({
+    vertexShader: PLANET_VERT,
+    fragmentShader: DUST_VEIL_FRAG,
+    uniforms: {
+      uAtmo: { value: atmo },
+      uCenter: { value: new THREE.Vector3(p.pos.x, p.pos.y, p.pos.z) },
+      uTime: { value: 0 },
+    },
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(p.radius * DUST_VEIL_SCALE, 48, 32), shellMat);
+  group.add(shell);
+
+  // backlit warm dust particles inside the 1.45R..2.65R envelope for crisp near-camera grain
+  const count = 420;
+  const rnd = mulberry32(p.seed + 909);
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const z = rnd() * 2 - 1;
+    const phi = rnd() * Math.PI * 2;
+    const s = Math.sqrt(Math.max(0, 1 - z * z));
+    const r = p.radius * (1.45 + Math.pow(rnd(), 0.72) * 1.2);
+    pos[i * 3] = s * Math.cos(phi) * r;
+    pos[i * 3 + 1] = z * r;
+    pos[i * 3 + 2] = s * Math.sin(phi) * r;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const moteMat = new THREE.PointsMaterial({
+    map: radialTexture(
+      [
+        [0, 'rgba(255,232,190,1)'],
+        [0.35, 'rgba(255,156,78,0.65)'],
+        [1, 'rgba(180,72,24,0)'],
+      ],
+      64,
+    ),
+    color: 0xffb472,
+    size: p.radius * 0.048,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: 0.62,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const motes = new THREE.Points(geo, moteMat);
+  motes.name = 'dustMotes';
+  group.add(motes);
+
+  return { group, shellMat, motes };
+}
 
 /** procedural orbital gas-harvesting station (~0.28R across, ≤9 draw calls) */
 function buildGasStation(p: PlanetDef): THREE.Group {
@@ -247,7 +508,7 @@ function buildGasStation(p: PlanetDef): THREE.Group {
   return root;
 }
 
-function haloShell(p: PlanetDef, scale: number, peakPow: number, gain: number, atmo: THREE.Color): THREE.Mesh {
+function haloShell(p: PlanetDef, scale: number, peakPow: number, gain: number, atmo: THREE.Color, selfLit = false): THREE.Mesh {
   return new THREE.Mesh(
     new THREE.SphereGeometry(p.radius * scale, 48, 32),
     new THREE.ShaderMaterial({
@@ -259,6 +520,7 @@ function haloShell(p: PlanetDef, scale: number, peakPow: number, gain: number, a
         uEdge: { value: Math.sqrt(1 - 1 / (scale * scale)) },
         uPow: { value: peakPow },
         uGain: { value: gain },
+        uSelfLit: { value: selfLit ? 1 : 0 },
       },
       side: THREE.BackSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
     }),
@@ -269,6 +531,45 @@ function buildPlanet(p: PlanetDef): THREE.Group {
   const g = new THREE.Group();
   g.position.set(p.pos.x, p.pos.y, p.pos.z);
   const atmo = new THREE.Color(p.atmosphere);
+
+  if (p.kind === 'red-giant') {
+    const surfaceMat = new THREE.ShaderMaterial({
+      vertexShader: PLANET_VERT,
+      fragmentShader: RED_GIANT_FRAG,
+      uniforms: {
+        uMap: { value: redGiantTexture(p) },
+        uTime: { value: 0 },
+        uGlow: { value: 1.7 },
+        uAtmo: { value: atmo },
+      },
+    });
+    const surface = new THREE.Mesh(new THREE.SphereGeometry(p.radius, 72, 48), surfaceMat);
+    surface.name = 'surface';
+    surface.rotation.z = 0.14;
+    // dual self-lit corona halo: thicker & brighter than planets (wide 1.16R + narrow bright rim)
+    const wideHalo = haloShell(p, HALO_SCALE, 1.9, 0.62, atmo, true);
+    const narrowHalo = haloShell(p, 1.06, 3.8, 0.72, new THREE.Color(0xffb45c), true);
+    const prom = buildProminences(p);
+    const veil = buildDustVeil(p, atmo);
+    const starFlare = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: flareTexture(),
+        color: new THREE.Color(0xff9640),
+        opacity: 0.78,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        transparent: true,
+      }),
+    );
+    starFlare.name = 'starFlare';
+    starFlare.scale.setScalar(p.radius * 5.8);
+    starFlare.userData.baseScale = p.radius * 5.8;
+
+    g.add(surface, wideHalo, narrowHalo, prom.mesh, veil.group, starFlare);
+    g.userData.timeMats = [surfaceMat, prom.material, veil.shellMat];
+    return g;
+  }
+
   const surface = new THREE.Mesh(
     new THREE.SphereGeometry(p.radius, 64, 40),
     new THREE.ShaderMaterial({
@@ -444,6 +745,13 @@ export function buildSpace(): SpaceView {
   sunLight.position.copy(sunDir).multiplyScalar(100);
   const fill = new THREE.HemisphereLight(0xbfd4ff, 0x5a4a9a, 1.25);
   near.add(sunLight, sunLight.target, fill);
+  // local warm-orange PointLight on red-giant star (range-limited so it never pollutes cabin/origin)
+  for (const p of PLANETS) {
+    if (p.kind !== 'red-giant') continue;
+    const starLight = new THREE.PointLight(0xff8438, 1200, p.radius * 3.8, 0.85);
+    starLight.position.set(p.pos.x, p.pos.y, p.pos.z);
+    near.add(starLight);
+  }
 
   // stardust: points in a box around the ship, wrapped as it moves
   const rnd = mulberry32(3);
@@ -489,6 +797,14 @@ export function buildSpace(): SpaceView {
           const gb = gs.getObjectByName('gasBeacon');
           if (gb) gb.scale.setScalar(1 + 0.45 * Math.max(0, Math.sin(t * 3.2)));
         }
+        const sf = p.getObjectByName('starFlare') as THREE.Sprite | undefined;
+        if (sf) {
+          const bs = (sf.userData.baseScale as number) ?? 1500;
+          sf.material.rotation = t * 0.032;
+          sf.scale.setScalar(bs * (1 + 0.045 * Math.sin(t * 0.75)));
+        }
+        const dm = p.getObjectByName('dustMotes');
+        if (dm) dm.rotation.y += dt * 0.008;
       }
       markerMat.opacity = 0.55 + 0.25 * Math.sin(t * 2.4);
       flare.material.rotation = t * 0.02;
