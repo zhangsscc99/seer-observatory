@@ -12,6 +12,7 @@ const KIND_LABEL: Record<PlanetDef['kind'], string> = {
   ice: '冰封行星',
   lava: '熔岩行星',
   'ice-ring': '冰环行星',
+  'gas-storm': '气态巨行星',
 };
 
 const HAZARD_LABEL: Record<HazardKind, string> = {

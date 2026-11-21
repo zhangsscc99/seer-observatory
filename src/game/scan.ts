@@ -44,6 +44,7 @@ export function hashId(id: string): number {
 /** fixed resource per planet kind — the table new planets draw from */
 export const RESOURCE_BY_KIND: Record<string, string> = {
   'ice-ring': '氦-3 冰芯',
+  'gas-storm': '风暴氦芯',
   ocean: '重水样本',
   gas: '氦气罐',
   ice: '冰晶',
@@ -57,6 +58,7 @@ const RESOURCE_BY_ID: Record<string, string> = {
   seron: '冰晶',
   volc: '硫化物',
   icer: '氦-3 冰芯',
+  'gas-storm': '风暴氦芯',
 };
 
 const LOG_BY_ID: Record<string, string> = {
@@ -65,6 +67,7 @@ const LOG_BY_ID: Record<string, string> = {
   seron: '极冠冰层纯净透亮，冰晶晶格完整，适合长期封存。',
   volc: '岩浆活动频繁，喷口周边富集硫化物结晶信号。',
   icer: '环带冰粒纯净，芯部氦-3丰度极高，卡西尼缝边缘结晶完整。',
+  'gas-storm': '巨型反气旋风暴眼持续旋转，轨道悬浮采集站正从云带抽取高纯氦芯。',
 };
 
 const GENERIC_LOGS: readonly string[] = [
