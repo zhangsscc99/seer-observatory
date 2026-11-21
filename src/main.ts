@@ -456,6 +456,10 @@ window.__seer = {
       // close approach inside 3.2R scan range (radiation HUD warn active) & edge of 2.6R dust veil
       dist = p.radius * 2.55;
       dir.set(0.48, 0.14, -0.86).normalize();
+    } else if (p.kind === 'binary') {
+      // ~3.2R approach off anti-sun: frames dual cool/warm lit planet with warm companion star in view
+      dist = p.radius * 3.15;
+      dir.set(-0.78, 0.14, 0.61).normalize();
     }
     ship.pos.x = p.pos.x + dir.x * dist;
     ship.pos.y = p.pos.y + dir.y * dist;
