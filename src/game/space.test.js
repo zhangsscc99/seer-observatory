@@ -15,6 +15,7 @@ var RESOURCE_BY_KIND = {
   "ice-ring": "\u6C26-3 \u51B0\u82AF",
   "gas-storm": "\u98CE\u66B4\u6C26\u82AF",
   "red-giant": "\u7EA2\u5DE8\u661F\u7B49\u79BB\u5B50",
+  binary: "\u53CC\u661F\u7B49\u79BB\u5B50",
   ocean: "\u91CD\u6C34\u6837\u672C",
   gas: "\u6C26\u6C14\u7F50",
   ice: "\u51B0\u6676",
@@ -27,7 +28,8 @@ var RESOURCE_BY_ID = {
   volc: "\u786B\u5316\u7269",
   icer: "\u6C26-3 \u51B0\u82AF",
   "gas-storm": "\u98CE\u66B4\u6C26\u82AF",
-  "red-giant": "\u7EA2\u5DE8\u661F\u7B49\u79BB\u5B50"
+  "red-giant": "\u7EA2\u5DE8\u661F\u7B49\u79BB\u5B50",
+  binary: "\u53CC\u661F\u7B49\u79BB\u5B50"
 };
 var LOG_BY_ID = {
   kelos: "\u5168\u7403\u6D77\u6D0B\u8986\u76D6\uFF0C\u6DF1\u5C42\u6D0B\u6D41\u4E2D\u5BCC\u542B\u91CD\u6C34\uFF0C\u91C7\u6837\u6570\u636E\u7A33\u5B9A\u3002",
@@ -36,7 +38,8 @@ var LOG_BY_ID = {
   volc: "\u5CA9\u6D46\u6D3B\u52A8\u9891\u7E41\uFF0C\u55B7\u53E3\u5468\u8FB9\u5BCC\u96C6\u786B\u5316\u7269\u7ED3\u6676\u4FE1\u53F7\u3002",
   icer: "\u73AF\u5E26\u51B0\u7C92\u7EAF\u51C0\uFF0C\u82AF\u90E8\u6C26-3\u4E30\u5EA6\u6781\u9AD8\uFF0C\u5361\u897F\u5C3C\u7F1D\u8FB9\u7F18\u7ED3\u6676\u5B8C\u6574\u3002",
   "gas-storm": "\u5DE8\u578B\u53CD\u6C14\u65CB\u98CE\u66B4\u773C\u6301\u7EED\u65CB\u8F6C\uFF0C\u8F68\u9053\u60AC\u6D6E\u91C7\u96C6\u7AD9\u6B63\u4ECE\u4E91\u5E26\u62BD\u53D6\u9AD8\u7EAF\u6C26\u82AF\u3002",
-  "red-giant": "\u7EA2\u5DE8\u661F\u65E5\u5195\u8000\u6591\u5267\u70C8\u7FFB\u6D8C\uFF0C\u5F3A\u8F90\u5C04\u7A7F\u900F\u539A\u91CD\u5C18\u57C3\u5E55\uFF0C\u9AD8\u6E29\u7B49\u79BB\u5B50\u4FE1\u53F7\u5145\u76C8\u661F\u57DF\u3002"
+  "red-giant": "\u7EA2\u5DE8\u661F\u65E5\u5195\u8000\u6591\u5267\u70C8\u7FFB\u6D8C\uFF0C\u5F3A\u8F90\u5C04\u7A7F\u900F\u539A\u91CD\u5C18\u57C3\u5E55\uFF0C\u9AD8\u6E29\u7B49\u79BB\u5B50\u4FE1\u53F7\u5145\u76C8\u661F\u57DF\u3002",
+  binary: "\u53CC\u661F\u51B7\u767D\u4E0E\u6696\u6A59\u53CC\u8272\u6E29\u8F90\u5C04\u5728\u6B64\u4EA4\u6C47\uFF0C\u6668\u660F\u73AF\u5E26\u9AD8\u80FD\u5377\u4E91\u7FFB\u6D8C\uFF0C\u5F3A\u5149\u5B50\u573A\u6301\u7EED\u4E3A\u98DE\u8239\u63A8\u8FDB\u5668\u63D0\u4F9B\u7A33\u5B9A\u56DE\u5145\u589E\u76CA\u3002"
 };
 var GENERIC_LOGS = [
   "\u5149\u8C31\u626B\u63CF\u5B8C\u6210\uFF0C\u8868\u5C42\u6210\u5206\u4E0E\u8F90\u5C04\u6C34\u5E73\u5DF2\u8BB0\u5165\u6863\u6848\u3002",
@@ -56,7 +59,8 @@ var HAZARDS = {
   cold: { energyMul: 0.55, warn: "\u4F4E\u6E29\xB7\u63A8\u8FDB\u5668\u6548\u7387\u4E0B\u964D" },
   radiation: { energyMul: 1, warn: "\u5F3A\u8F90\u5C04\xB7\u62A4\u76FE\u8B66\u62A5" },
   wind: { energyMul: 1, warn: "\u6C14\u6D41\xB7\u822A\u5411\u6F02\u79FB" },
-  gravity: { energyMul: 0.8, warn: "\u5F3A\u5F15\u529B\xB7\u6CE8\u610F\u8DDD\u79BB" }
+  gravity: { energyMul: 0.8, warn: "\u5F3A\u5F15\u529B\xB7\u6CE8\u610F\u8DDD\u79BB" },
+  photon: { energyMul: 1.3, warn: "\u53CC\u661F\u5149\u5B50\u573A\xB7\u56DE\u5145 \xD71.3" }
 };
 function hazardEffect(h) {
   if (!h) return { energyMul: 1, warn: null };
@@ -72,7 +76,12 @@ var PLANETS = [
   { id: "volc", name: "\u706B\u5C71\u661F", pos: { x: 330, y: -150, z: 700 }, radius: 95, hazard: "radiation", colors: [4198938, 12728862, 16761418], atmosphere: 16738890, kind: "lava", seed: 41 },
   { id: "icer", name: "\u51B0\u73AF\u5E26", pos: { x: -80, y: 120, z: -1180 }, radius: 120, hazard: "cold", colors: [9425138, 15267839, 16777215], atmosphere: 10479359, kind: "ice-ring", seed: 53 },
   { id: "gas-storm", name: "\u6C14\u6001\u5DE8\u884C\u661F", pos: { x: 620, y: 60, z: 780 }, radius: 145, hazard: "gravity", colors: [5909012, 12876346, 16770744], atmosphere: 16760954, kind: "gas-storm", seed: 67 },
-  { id: "red-giant", name: "\u7EA2\u5DE8\u661F\u7CFB", pos: { x: -480, y: 160, z: 1020 }, radius: 280, hazard: "radiation", colors: [8002574, 15885337, 16773840], atmosphere: 16745528, kind: "red-giant", seed: 89 }
+  { id: "red-giant", name: "\u7EA2\u5DE8\u661F\u7CFB", pos: { x: -480, y: 160, z: 1020 }, radius: 280, hazard: "radiation", colors: [8002574, 15885337, 16773840], atmosphere: 16745528, kind: "red-giant", seed: 89 },
+  { id: "binary", name: "\u53CC\u5B50\u661F\u57DF", pos: { x: 1100, y: -30, z: -520 }, radius: 135, hazard: "photon", colors: [3833813, 15764538, 15923199], atmosphere: 14280959, kind: "binary", seed: 97 }
+];
+var BINARY_STARS = [
+  { id: "binary-a", name: "\u53CC\u5B50\u4E3B\u661F\xB7\u51B7\u767D", pos: { x: 380, y: 560, z: -1960 }, radius: 88, color: 12574975, intensity: 2.2 },
+  { id: "binary-b", name: "\u53CC\u5B50\u4F34\u661F\xB7\u6696\u6A59", pos: { x: 1460, y: -480, z: -1760 }, radius: 70, color: 16756838, intensity: 1.5 }
 ];
 function planetById(id) {
   return PLANETS.find((p) => p.id === id);
@@ -98,6 +107,7 @@ test("hazards follow the sector design table", () => {
   assert.equal(planetById("icer").hazard, "cold");
   assert.equal(planetById("gas-storm").hazard, "gravity");
   assert.equal(planetById("red-giant").hazard, "radiation");
+  assert.equal(planetById("binary").hazard, "photon");
 });
 test("icer: ice-ring planet registered and scannable", () => {
   const p = planetById("icer");
@@ -141,6 +151,35 @@ test("red-giant: red-giant star registered, largest body, scannable with radiati
   const eff = hazardEffect(p.hazard);
   assert.ok(eff.warn && eff.warn.length > 0);
   assert.equal(eff.warn, "\u5F3A\u8F90\u5C04\xB7\u62A4\u76FE\u8B66\u62A5");
+});
+test("binary: binary system registered, scannable, photon hazard and twin stars valid", () => {
+  const p = planetById("binary");
+  assert.ok(p);
+  assert.equal(p.kind, "binary");
+  assert.equal(p.hazard, "photon");
+  assert.ok(TARGETS.includes("binary"));
+  assert.equal(TARGETS.filter((id) => id === "binary").length, 1);
+  const res = scanResult("binary");
+  assert.equal(res.resource, "\u53CC\u661F\u7B49\u79BB\u5B50");
+  assert.ok(res.amount >= 3 && res.amount <= 7, `amount ${res.amount}`);
+  const len = [...res.log].length;
+  assert.ok(len >= 40, `log length ${len} < 40`);
+  assert.notEqual(res.log[0], " ");
+  const eff = hazardEffect(p.hazard);
+  assert.equal(eff.energyMul, 1.3);
+  assert.equal(eff.warn, "\u53CC\u661F\u5149\u5B50\u573A\xB7\u56DE\u5145 \xD71.3");
+  for (const other of PLANETS) {
+    if (other.id === "binary") continue;
+    const d = Math.hypot(p.pos.x - other.pos.x, p.pos.y - other.pos.y, p.pos.z - other.pos.z);
+    assert.ok(d > p.radius + other.radius + 100, `binary vs ${other.id}: ${d.toFixed(1)} <= ${p.radius + other.radius + 100}`);
+  }
+  assert.equal(BINARY_STARS.length, 2);
+  assert.notEqual(BINARY_STARS[0].color, BINARY_STARS[1].color);
+  for (const s of BINARY_STARS) {
+    const dist = Math.hypot(s.pos.x, s.pos.y, s.pos.z);
+    assert.ok(dist >= 1500 && dist <= 2600, `${s.id} dist ${dist.toFixed(1)}`);
+    assert.ok(s.radius > 0 && s.intensity > 0);
+  }
 });
 test("planet bounding spheres never overlap", () => {
   for (let i = 0; i < PLANETS.length; i++) {

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { hazardEffect, scanResult } from './scan.ts';
-import { PLANETS, SECTOR_RADIUS, TARGETS, planetById } from './space.ts';
+import { BINARY_STARS, PLANETS, SECTOR_RADIUS, TARGETS, planetById } from './space.ts';
 
 test('every target id resolves and the target list covers the sector', () => {
   for (const id of TARGETS) assert.ok(planetById(id), id);
@@ -16,6 +16,7 @@ test('hazards follow the sector design table', () => {
   assert.equal(planetById('icer')!.hazard, 'cold');
   assert.equal(planetById('gas-storm')!.hazard, 'gravity');
   assert.equal(planetById('red-giant')!.hazard, 'radiation');
+  assert.equal(planetById('binary')!.hazard, 'photon');
 });
 
 test('icer: ice-ring planet registered and scannable', () => {
@@ -62,6 +63,36 @@ test('red-giant: red-giant star registered, largest body, scannable with radiati
   const eff = hazardEffect(p.hazard);
   assert.ok(eff.warn && eff.warn.length > 0);
   assert.equal(eff.warn, '强辐射·护盾警报');
+});
+
+test('binary: binary system registered, scannable, photon hazard and twin stars valid', () => {
+  const p = planetById('binary');
+  assert.ok(p);
+  assert.equal(p.kind, 'binary');
+  assert.equal(p.hazard, 'photon');
+  assert.ok(TARGETS.includes('binary'));
+  assert.equal(TARGETS.filter((id) => id === 'binary').length, 1);
+  const res = scanResult('binary');
+  assert.equal(res.resource, '双星等离子');
+  assert.ok(res.amount >= 3 && res.amount <= 7, `amount ${res.amount}`);
+  const len = [...res.log].length;
+  assert.ok(len >= 40, `log length ${len} < 40`);
+  assert.notEqual(res.log[0], ' ');
+  const eff = hazardEffect(p.hazard);
+  assert.equal(eff.energyMul, 1.3);
+  assert.equal(eff.warn, '双星光子场·回充 ×1.3');
+  for (const other of PLANETS) {
+    if (other.id === 'binary') continue;
+    const d = Math.hypot(p.pos.x - other.pos.x, p.pos.y - other.pos.y, p.pos.z - other.pos.z);
+    assert.ok(d > p.radius + other.radius + 100, `binary vs ${other.id}: ${d.toFixed(1)} <= ${p.radius + other.radius + 100}`);
+  }
+  assert.equal(BINARY_STARS.length, 2);
+  assert.notEqual(BINARY_STARS[0].color, BINARY_STARS[1].color);
+  for (const s of BINARY_STARS) {
+    const dist = Math.hypot(s.pos.x, s.pos.y, s.pos.z);
+    assert.ok(dist >= 1500 && dist <= 2600, `${s.id} dist ${dist.toFixed(1)}`);
+    assert.ok(s.radius > 0 && s.intensity > 0);
+  }
 });
 
 test('planet bounding spheres never overlap', () => {

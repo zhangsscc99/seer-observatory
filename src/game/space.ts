@@ -19,8 +19,19 @@ export interface PlanetDef {
   colors: [number, number, number];
   atmosphere: number;
   /** texture recipe */
-  kind: 'ocean' | 'gas' | 'ice' | 'lava' | 'ice-ring' | 'gas-storm' | 'red-giant';
+  kind: 'ocean' | 'gas' | 'ice' | 'lava' | 'ice-ring' | 'gas-storm' | 'red-giant' | 'binary';
   seed: number;
+}
+
+export interface BinaryStarDef {
+  id: string;
+  name: string;
+  pos: Vec3;
+  radius: number;
+  /** color temperature hex */
+  color: number;
+  /** luminous intensity */
+  intensity: number;
 }
 
 export const PLANETS: readonly PlanetDef[] = [
@@ -31,6 +42,13 @@ export const PLANETS: readonly PlanetDef[] = [
   { id: 'icer', name: '冰环带', pos: { x: -80, y: 120, z: -1180 }, radius: 120, hazard: 'cold', colors: [0x8fd0f2, 0xe8f7ff, 0xffffff], atmosphere: 0x9fe6ff, kind: 'ice-ring', seed: 53 },
   { id: 'gas-storm', name: '气态巨行星', pos: { x: 620, y: 60, z: 780 }, radius: 145, hazard: 'gravity', colors: [0x5a2a14, 0xc47a3a, 0xffe6b8], atmosphere: 0xffc07a, kind: 'gas-storm', seed: 67 },
   { id: 'red-giant', name: '红巨星系', pos: { x: -480, y: 160, z: 1020 }, radius: 280, hazard: 'radiation', colors: [0x7a1c0e, 0xf26419, 0xfff2d0], atmosphere: 0xff8438, kind: 'red-giant', seed: 89 },
+  { id: 'binary', name: '双子星域', pos: { x: 1100, y: -30, z: -520 }, radius: 135, hazard: 'photon', colors: [0x3a7fd5, 0xf08c3a, 0xf2f7ff], atmosphere: 0xd9e8ff, kind: 'binary', seed: 97 },
+];
+
+/** twin distant stars of the binary system (cool-white primary + warm-orange companion) */
+export const BINARY_STARS: readonly BinaryStarDef[] = [
+  { id: 'binary-a', name: '双子主星·冷白', pos: { x: 380, y: 560, z: -1960 }, radius: 88, color: 0xbfe0ff, intensity: 2.2 },
+  { id: 'binary-b', name: '双子伴星·暖橙', pos: { x: 1460, y: -480, z: -1760 }, radius: 70, color: 0xffb066, intensity: 1.5 },
 ];
 
 export function planetById(id: string): PlanetDef | undefined {

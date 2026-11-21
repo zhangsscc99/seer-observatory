@@ -14,6 +14,7 @@ const KIND_LABEL: Record<PlanetDef['kind'], string> = {
   'ice-ring': '冰环行星',
   'gas-storm': '气态巨行星',
   'red-giant': '红巨星',
+  binary: '双星系',
 };
 
 const HAZARD_LABEL: Record<HazardKind, string> = {
@@ -21,6 +22,7 @@ const HAZARD_LABEL: Record<HazardKind, string> = {
   radiation: '强辐射',
   wind: '湍流',
   gravity: '强引力',
+  photon: '光子场',
 };
 
 export interface HudHandlers {

@@ -3,7 +3,7 @@
 // (id / progress / done) so progress survives leaving range and only resets
 // when a different target comes into view.
 
-export type HazardKind = 'cold' | 'radiation' | 'wind' | 'gravity';
+export type HazardKind = 'cold' | 'radiation' | 'wind' | 'gravity' | 'photon';
 
 export interface ScanTarget {
   id: string;
@@ -46,6 +46,7 @@ export const RESOURCE_BY_KIND: Record<string, string> = {
   'ice-ring': '氦-3 冰芯',
   'gas-storm': '风暴氦芯',
   'red-giant': '红巨星等离子',
+  binary: '双星等离子',
   ocean: '重水样本',
   gas: '氦气罐',
   ice: '冰晶',
@@ -61,6 +62,7 @@ const RESOURCE_BY_ID: Record<string, string> = {
   icer: '氦-3 冰芯',
   'gas-storm': '风暴氦芯',
   'red-giant': '红巨星等离子',
+  binary: '双星等离子',
 };
 
 const LOG_BY_ID: Record<string, string> = {
@@ -71,6 +73,7 @@ const LOG_BY_ID: Record<string, string> = {
   icer: '环带冰粒纯净，芯部氦-3丰度极高，卡西尼缝边缘结晶完整。',
   'gas-storm': '巨型反气旋风暴眼持续旋转，轨道悬浮采集站正从云带抽取高纯氦芯。',
   'red-giant': '红巨星日冕耀斑剧烈翻涌，强辐射穿透厚重尘埃幕，高温等离子信号充盈星域。',
+  binary: '双星冷白与暖橙双色温辐射在此交汇，晨昏环带高能卷云翻涌，强光子场持续为飞船推进器提供稳定回充增益。',
 };
 
 const GENERIC_LOGS: readonly string[] = [
@@ -109,6 +112,7 @@ const HAZARDS: Record<HazardKind, HazardEffect & { warn: string }> = {
   radiation: { energyMul: 1, warn: '强辐射·护盾警报' },
   wind: { energyMul: 1, warn: '气流·航向漂移' },
   gravity: { energyMul: 0.8, warn: '强引力·注意距离' },
+  photon: { energyMul: 1.3, warn: '双星光子场·回充 ×1.3' },
 };
 
 export function hazardEffect(h: HazardKind | undefined): HazardEffect {
