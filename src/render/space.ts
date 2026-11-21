@@ -110,11 +110,11 @@ const HALO_SCALE = 1.16;
 const HALO_SCALE_NARROW = 1.05;
 const FROST_SCALE = 1.02;
 
-/** procedural orbital gas-harvesting station (~0.26R across, ≤8 draw calls) */
+/** procedural orbital gas-harvesting station (~0.28R across, ≤9 draw calls) */
 function buildGasStation(p: PlanetDef): THREE.Group {
-  const r = p.radius * 0.13; // ~0.26R diameter
+  const r = p.radius * 0.20;
   const root = new THREE.Group();
-  const offset = new THREE.Vector3(p.radius * 0.62, p.radius * 0.52, -p.radius * 0.72);
+  const offset = new THREE.Vector3(p.radius * 0.35, p.radius * 0.72, -p.radius * 1.05);
   const radial = offset.clone().normalize();
   root.position.copy(offset);
   root.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), radial);
@@ -209,16 +209,28 @@ function buildGasStation(p: PlanetDef): THREE.Group {
   body.add(struts);
 
   // ring of 16 window lights around upper platform (1 draw call)
-  const winGeo = new THREE.BoxGeometry(r * 0.13, r * 0.06, r * 0.04);
+  const winGeo = new THREE.BoxGeometry(r * 0.14, r * 0.07, r * 0.05);
   const wins = new THREE.InstancedMesh(winGeo, MAT.cyanGlow, 16);
   for (let i = 0; i < 16; i++) {
     const a = (i / 16) * Math.PI * 2;
     q.setFromEuler(e.set(0, a, 0));
-    m.compose(new THREE.Vector3(Math.sin(a) * r * 0.97, r * 0.2, Math.cos(a) * r * 0.97), q, sc);
+    m.compose(new THREE.Vector3(Math.sin(a) * r * 1.005, r * 0.2, Math.cos(a) * r * 1.005), q, sc);
     wins.setMatrixAt(i, m);
   }
   wins.instanceMatrix.needsUpdate = true;
   body.add(wins);
+
+  // 3 warm-white work lights on the central tower collar (1 draw call)
+  const workGeo = new THREE.BoxGeometry(r * 0.13, r * 0.08, r * 0.08);
+  const workLights = new THREE.InstancedMesh(workGeo, glow(0xffe6c0, 1.6), 3);
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2 + 0.4;
+    q.setFromEuler(e.set(0, a, 0));
+    m.compose(new THREE.Vector3(Math.sin(a) * r * 0.29, r * 0.34, Math.cos(a) * r * 0.29), q, sc);
+    workLights.setMatrixAt(i, m);
+  }
+  workLights.instanceMatrix.needsUpdate = true;
+  body.add(workLights);
 
   // bottom beacon (pulses in update)
   const beacon = new THREE.Mesh(new THREE.SphereGeometry(r * 0.08, 12, 10), glow(PAL.tealAccent, 1.9));
@@ -227,8 +239,8 @@ function buildGasStation(p: PlanetDef): THREE.Group {
   body.add(beacon);
 
   // thin dark harvesting tether dipping into the upper cloud deck
-  const tetherLen = p.radius * 0.35;
-  const tether = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.014, r * 0.008, tetherLen, 6), MAT.metalDark);
+  const tetherLen = p.radius * 0.3;
+  const tether = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.012, r * 0.012, tetherLen, 6), MAT.metalDark);
   tether.position.y = -r * 0.62 - tetherLen * 0.5;
   root.add(tether);
 
@@ -471,9 +483,9 @@ export function buildSpace(): SpaceView {
           const base = gs.userData.basePos as THREE.Vector3;
           const rad = gs.userData.radial as THREE.Vector3;
           const amp = (gs.userData.bobAmp as number) ?? 2.9;
-          gs.position.copy(base).addScaledVector(rad, Math.sin(t * 0.6) * amp);
+          gs.position.copy(base).addScaledVector(rad, Math.sin(t * 0.7) * amp);
           const body = gs.getObjectByName('gasStationBody');
-          if (body) body.rotation.y += dt * 0.25;
+          if (body) body.rotation.y += dt * 0.22;
           const gb = gs.getObjectByName('gasBeacon');
           if (gb) gb.scale.setScalar(1 + 0.45 * Math.max(0, Math.sin(t * 3.2)));
         }
