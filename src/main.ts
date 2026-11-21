@@ -9,7 +9,7 @@ import { clamp, damp } from './game/rng.ts';
 import { Robot } from './game/robot.ts';
 import { hazardEffect, SCAN, Scanner, type ScanTarget } from './game/scan.ts';
 import { forwardOf, Ship, SHIP } from './game/ship.ts';
-import { PLANETS, planetById, SECTOR_RADIUS, solidBodies, SUN_DIR } from './game/space.ts';
+import { PLANETS, planetById, SECTOR_RADIUS, solidBodies, SUN_DIR, type PlanetDef } from './game/space.ts';
 import { Controls } from './input/controls.ts';
 import { buildCabin } from './render/cabin.ts';
 import { Hud } from './render/hud.ts';
@@ -142,9 +142,14 @@ const hud = new Hud(
 hud.setArchive(archive);
 hud.setTargets(PLANETS, targetId, selectTarget);
 space.setTarget(targetId);
+function applyTargetHolo(p: PlanetDef): void {
+  if (p.kind === 'binary') cabin.setHoloColor(0xbfe0ff, 0xffb066);
+  else cabin.setHoloColor(p.colors[2]);
+}
+
 const savedTargetPlanet = targetId === null ? undefined : planetById(targetId);
 if (savedTargetPlanet) {
-  cabin.setHoloColor(savedTargetPlanet.colors[2]);
+  applyTargetHolo(savedTargetPlanet);
   hud.setGoal(`航行至 ${savedTargetPlanet.name} 执行扫描`);
 }
 applyScene('cabin');
@@ -178,7 +183,7 @@ function selectTarget(id: string): void {
     /* private mode */
   }
   space.setTarget(id);
-  cabin.setHoloColor(p.colors[2]);
+  applyTargetHolo(p);
   hud.setGoal(`航行至 ${p.name} 执行扫描`);
   hud.setTargets(PLANETS, id, selectTarget);
   hud.closeTargets();
@@ -347,7 +352,10 @@ function updateSpace(dt: number, active: boolean): void {
   camera.updateProjectionMatrix();
   hud.setFlight(ship.speed, ship.energy / SHIP.energyMax, ship.depleted);
   hud.setTip(ship.depleted ? '推进能量耗尽 · 充能中' : Math.hypot(ship.pos.x, ship.pos.y, ship.pos.z) > SECTOR_RADIUS ? '已到达星域边界 · 自动返航' : '');
-  hud.setWarn(hazard.warn, near?.hazard ?? null);
+  const selectedPlanet = targetId === null ? undefined : planetById(targetId);
+  const warnHazard = near?.hazard ?? (selectedPlanet?.kind === 'binary' ? selectedPlanet.hazard : undefined);
+  const warnText = near ? hazard.warn : warnHazard ? hazardEffect(warnHazard).warn : null;
+  hud.setWarn(warnText, warnHazard ?? null);
 
   const events = scanner.update(dt, near, active && controls.act);
   for (const ev of events) {

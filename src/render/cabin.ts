@@ -12,7 +12,7 @@ export interface CabinView {
   group: THREE.Group;
   /** t: seconds, thrust: 0..1 launch charge */
   update(t: number, dt: number, thrust: number): void;
-  setHoloColor(hex: number): void;
+  setHoloColor(hex: number, secondaryHex?: number): void;
 }
 
 function place(obj: THREE.Object3D, deg: number, r: number, y = 0): THREE.Object3D {
@@ -341,9 +341,20 @@ export function buildCabin(): CabinView {
 
   return {
     group,
-    setHoloColor(hex) {
-      const color = new THREE.Color(hex);
-      for (const m of holoMats) m.color.copy(color);
+    setHoloColor(hex, secondaryHex) {
+      const primary = new THREE.Color(hex);
+      if (secondaryHex === undefined) {
+        for (const m of holoMats) m.color.copy(primary);
+        return;
+      }
+      const secondary = new THREE.Color(secondaryHex);
+      // dual-tone hologram (e.g. binary system): outer wire/ring-0/beam cool, core/inner/ring-1 warm
+      holoMats[0].color.copy(secondary); // core
+      holoMats[1].color.copy(primary);   // wire
+      holoMats[2].color.copy(secondary); // inner
+      holoMats[3].color.copy(primary);   // rings[0]
+      holoMats[4].color.copy(secondary); // rings[1]
+      holoMats[5].color.copy(primary);   // beam
     },
     update(t, dt, thrust) {
       const spin = 0.5 + thrust * 14;
