@@ -108,6 +108,130 @@ const HALO_SCALE = 1.16;
 const HALO_SCALE_NARROW = 1.05;
 const FROST_SCALE = 1.02;
 
+/** procedural orbital gas-harvesting station (~0.22R across, ≤8 draw calls) */
+function buildGasStation(p: PlanetDef): THREE.Group {
+  const r = p.radius * 0.11; // ~0.22R diameter
+  const root = new THREE.Group();
+  const offset = new THREE.Vector3(p.radius * 0.9, p.radius * 0.72, p.radius * 0.35);
+  const radial = offset.clone().normalize();
+  root.position.copy(offset);
+  root.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), radial);
+  root.userData.basePos = offset.clone();
+  root.userData.radial = radial.clone();
+  root.userData.baseQuat = root.quaternion.clone();
+
+  const body = new THREE.Group();
+  body.name = 'gasStationBody';
+  root.add(body);
+
+  // upper collector ring platform
+  body.add(
+    arc(
+      [
+        [r * 0.62, r * 0.08],
+        [r * 0.96, r * 0.08],
+        [r, r * 0.16],
+        [r * 0.96, r * 0.24],
+        [r * 0.62, r * 0.24],
+        [r * 0.62, r * 0.08],
+      ],
+      0,
+      360,
+      MAT.hull,
+      32,
+    ),
+  );
+  // upper rim cyan light strip
+  body.add(
+    arc(
+      [
+        [r * 1.005, r * 0.14],
+        [r * 1.005, r * 0.18],
+      ],
+      0,
+      360,
+      MAT.cyanGlow,
+      32,
+    ),
+  );
+  // lower truss/collector ring
+  body.add(
+    arc(
+      [
+        [r * 0.48, -r * 0.26],
+        [r * 0.78, -r * 0.22],
+        [r * 0.78, -r * 0.14],
+        [r * 0.48, -r * 0.14],
+        [r * 0.48, -r * 0.26],
+      ],
+      0,
+      360,
+      MAT.hullShade,
+      28,
+    ),
+  );
+  // central core tower & spire
+  body.add(
+    arc(
+      [
+        [0, -r * 0.56],
+        [r * 0.18, -r * 0.45],
+        [r * 0.26, -r * 0.15],
+        [r * 0.26, r * 0.32],
+        [r * 0.14, r * 0.48],
+        [r * 0.06, r * 0.88],
+        [0, r * 0.92],
+      ],
+      0,
+      360,
+      MAT.metal,
+      20,
+    ),
+  );
+
+  // 6 truss struts connecting upper & lower rings (1 draw call)
+  const strutGeo = new THREE.CylinderGeometry(r * 0.032, r * 0.032, r * 0.44, 6);
+  const struts = new THREE.InstancedMesh(strutGeo, MAT.metalDark, 6);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const e = new THREE.Euler();
+  const sc = new THREE.Vector3(1, 1, 1);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    q.setFromEuler(e.set(0, -a, -0.26));
+    m.compose(new THREE.Vector3(Math.cos(a) * r * 0.7, -r * 0.02, Math.sin(a) * r * 0.7), q, sc);
+    struts.setMatrixAt(i, m);
+  }
+  struts.instanceMatrix.needsUpdate = true;
+  body.add(struts);
+
+  // ring of 16 window lights around upper platform (1 draw call)
+  const winGeo = new THREE.BoxGeometry(r * 0.13, r * 0.06, r * 0.04);
+  const wins = new THREE.InstancedMesh(winGeo, MAT.cyanGlow, 16);
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    q.setFromEuler(e.set(0, a, 0));
+    m.compose(new THREE.Vector3(Math.sin(a) * r * 0.97, r * 0.2, Math.cos(a) * r * 0.97), q, sc);
+    wins.setMatrixAt(i, m);
+  }
+  wins.instanceMatrix.needsUpdate = true;
+  body.add(wins);
+
+  // bottom beacon (pulses in update)
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(r * 0.08, 12, 10), glow(PAL.tealAccent, 1.9));
+  beacon.position.y = -r * 0.62;
+  beacon.name = 'gasBeacon';
+  body.add(beacon);
+
+  // thin dark harvesting tether dipping into the upper cloud deck
+  const tetherLen = p.radius * 0.24;
+  const tether = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.015, r * 0.009, tetherLen, 6), MAT.metalDark);
+  tether.position.y = -r * 0.62 - tetherLen * 0.5;
+  root.add(tether);
+
+  return root;
+}
+
 function haloShell(p: PlanetDef, scale: number, peakPow: number, gain: number, atmo: THREE.Color): THREE.Mesh {
   return new THREE.Mesh(
     new THREE.SphereGeometry(p.radius * scale, 48, 32),
@@ -154,6 +278,9 @@ function buildPlanet(p: PlanetDef): THREE.Group {
   if (p.kind === 'gas-storm') {
     g.add(haloShell(p, HALO_SCALE_NARROW, 5.5, 0.36, atmo));
     timeMats.push(surface.material as THREE.ShaderMaterial);
+    const gasStation = buildGasStation(p);
+    gasStation.name = 'gasStation';
+    g.add(gasStation);
   }
   if (p.kind === 'ice-ring') {
     // dual halo: narrow bright rim (sharper peak) inside the wide mist
@@ -336,6 +463,16 @@ export function buildSpace(): SpaceView {
       for (const p of planets) {
         p.getObjectByName('surface')!.rotation.y += dt * 0.01;
         for (const m of (p.userData.timeMats ?? []) as THREE.ShaderMaterial[]) m.uniforms.uTime.value = t;
+        const gs = p.getObjectByName('gasStation');
+        if (gs) {
+          const base = gs.userData.basePos as THREE.Vector3;
+          const rad = gs.userData.radial as THREE.Vector3;
+          gs.position.copy(base).addScaledVector(rad, Math.sin(t * 0.6) * 1.8);
+          const body = gs.getObjectByName('gasStationBody');
+          if (body) body.rotation.y = t * 0.14;
+          const gb = gs.getObjectByName('gasBeacon');
+          if (gb) gb.scale.setScalar(1 + 0.45 * Math.max(0, Math.sin(t * 3.2)));
+        }
       }
       markerMat.opacity = 0.55 + 0.25 * Math.sin(t * 2.4);
       flare.material.rotation = t * 0.02;
