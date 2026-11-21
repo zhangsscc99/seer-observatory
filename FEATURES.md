@@ -99,11 +99,23 @@ npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measu
 | D.3 | 部署门：build → 备份 → 部署 → 重启 → 健康检查 → 失败回滚 | `bash scripts/ci-deploy.sh` |
 | D.4 | 体积：首屏 JS gzip < 1.5 MB；three 之外代码 < 400 KB | `npm run build`（看 gzip 列）；`cat src/**/*.ts \| wc -c` |
 
-## 已知待办（M7 走查后，下一轮优先）
+## M8 红巨星系 red-giant（F801–F804）
+
+| # | 功能 | verify |
+| --- | --- | --- |
+| 8.1 | PLANETS 新增 `red-giant`（kind `'red-giant'`、hazard `radiation`、r280 @ (-480,160,1020)、与其余 6 星包围球不重叠、SECTOR_RADIUS 内） | `node --test --test-name-pattern="red-giant|bounding spheres" src/game/` |
+| 8.2 | 扫描资源/日志：`scanResult('red-giant')` → 红巨星等离子 + 专属观测日志；`hazardEffect('radiation')` 出「强辐射·护盾警报」 | `node --test --test-name-pattern="red-giant" src/game/` |
+| 8.3 | 1024×512 equirect 光球贴图：12×6 + 40×20 双层抖动 Voronoi 米粒（3.33× 尺度差）+ 暗沟 + 16 个耀斑核 + 极区压暗 | `grep -n "redGiantTexture" src/render/textures.ts` |
+| 8.4 | 自发光着色器：双层 UV 慢速对流（uTime 0.02）+ 临边昏暗 `pow(1-NdV,1.6)` → 亮度 ×0.34、色偏「红移」+ 色球边缘 + 双层 halo(1.16R gain .62 / 1.06R gain .72) + 5 条日珥弧 + 2.6R 尘埃幕壳与 420 颗逆光尘 + 5.8R 暖橙耀斑 billboard + 局部 PointLight | `grep -n "RED_GIANT_FRAG\|buildProminences\|buildDustVeil" src/render/space.ts` |
+| 8.5 | 特写出图：`red-844x390.png` / `red-390x844.png`，阈值不变 | `node scripts/measure-look.mjs` → `LOOK OK`；`ls e2e/shots/red-*.png` |
+
+## 已知待办（M8 走查后，下一轮优先）
 
 | # | 问题 | 证据 | 验收 |
 | --- | --- | --- | --- |
-| T1 | HUD 顶部「档案 / 返回舱内 / 静音」视觉高度 ~34–40px，低于移动端 48px 触控标准 | `e2e/shots/gas-390x844.png` | DOM 实测三者 ≥48px 且互不重叠；`node e2e/smoke.mjs` 通过 |
+| T1 | HUD 顶部「档案 / 返回舱内 / 静音」视觉高度 ~34–40px，低于移动端 48px 触控标准 | `e2e/shots/red-390x844.png` | DOM 实测三者 ≥48px 且互不重叠；`node e2e/smoke.mjs` 通过 |
 | T2 | `measure-look` 对竖屏 info-only 行仍打印 `FAIL`（不应有 PASS/FAIL 字样），易被误读为闸门失败 | 一次完整跑的输出 | 竖屏行只打印 `info`，闸门结论只看横屏 |
 | T3 | gas-storm 条带仍偏平滑，缺高频碎云/丝状卷曲；风暴眼偏同心椭圆，螺旋臂可再强化 | `e2e/shots/gas-844x390.png` | 特写里能数出 ≥3 条螺旋臂、条带边缘有破碎感（人工评审 + measure 不退化） |
 | T4 | 特写里悬浮采集站偏小、易与飞船剪影混淆 | 同上 | 站体在特写里 ≥1/5 画面高、能辨认环台/塔/窗光 |
+| T5 | red-giant 光球在 2.55R 特写下读成「干裂泥地/岩浆裂纹」：Voronoi 米粒尺度仍偏大、暗沟过宽，看不出沸腾对流 | `e2e/shots/red-844x390.png` | 特写里米粒直径 ≤ 屏高 1.5%，沟槽细而密（≥300 个可见单元），仍有 16 个耀斑核 |
+| T6 | 日珥弧/尘埃幕在这个机位几乎看不见（只有 halo 发光），临边昏暗中被 halo 复亮，飞船受光偏平 | 同上 | 特写里能数出 ≥2 条日珥弧伸出边缘；尘幕在 2.6R 壳上可见逆光颗粒；飞船朝星面一侧与背面的亮度比 ≥1.8 |
