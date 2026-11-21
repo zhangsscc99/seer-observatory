@@ -39,9 +39,9 @@ void main() {
     vec2 eNorm = dEye / vec2(0.082, 0.046);
     float r = length(eNorm);
     float eyeMask = smoothstep(1.25, 0.15, r);
-    float ang = uTime * 0.45 * smoothstep(1.25, 0.1, r);
+    float ang = uTime * 0.25 * smoothstep(1.25, 0.1, r);
     float ca = cos(ang), sa = sin(ang);
-    vec2 rotNorm = mat2(ca, -sa, sa, ca) * eNorm * (1.0 - 0.05 * eyeMask * sin(uTime * 1.1));
+    vec2 rotNorm = mat2(ca, -sa, sa, ca) * eNorm * (1.0 - 0.04 * eyeMask * sin(uTime * 0.8));
     vec2 uvEye = vec2(0.62 + rotNorm.x * 0.082, clamp(0.42 + rotNorm.y * 0.046, 0.001, 0.999));
     vec3 baseCol = texture2D(uMap, mix(uv1, uvEye, eyeMask)).rgb;
     float shear = 0.004 * sin(vUv.y * 26.0 + uTime * 0.28);
@@ -52,6 +52,8 @@ void main() {
     albedo = texture2D(uMap, vUv).rgb;
   }
   vec3 col = albedo * (0.10 + 0.92 * day);
+  float limbFactor = pow(1.0 - abs(dot(n, v)), 1.5);
+  col += albedo * uAtmo * 0.10 * (1.0 - day) * limbFactor * uStorm;
   col += albedo * uGlow * (1.0 - day) * smoothstep(0.55, 1.0, albedo.r); // night-side emissive (lava)
   float spec = pow(max(dot(n, normalize(v + uSun)), 0.0), 48.0) * 0.18 * day;
   col += vec3(spec) * uSpec; // ice/gas only — lava stays matte
@@ -108,16 +110,17 @@ const HALO_SCALE = 1.16;
 const HALO_SCALE_NARROW = 1.05;
 const FROST_SCALE = 1.02;
 
-/** procedural orbital gas-harvesting station (~0.22R across, ≤8 draw calls) */
+/** procedural orbital gas-harvesting station (~0.26R across, ≤8 draw calls) */
 function buildGasStation(p: PlanetDef): THREE.Group {
-  const r = p.radius * 0.11; // ~0.22R diameter
+  const r = p.radius * 0.13; // ~0.26R diameter
   const root = new THREE.Group();
-  const offset = new THREE.Vector3(p.radius * 0.9, p.radius * 0.72, p.radius * 0.35);
+  const offset = new THREE.Vector3(p.radius * 0.62, p.radius * 0.52, -p.radius * 0.72);
   const radial = offset.clone().normalize();
   root.position.copy(offset);
   root.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), radial);
   root.userData.basePos = offset.clone();
   root.userData.radial = radial.clone();
+  root.userData.bobAmp = p.radius * 0.02;
   root.userData.baseQuat = root.quaternion.clone();
 
   const body = new THREE.Group();
@@ -224,8 +227,8 @@ function buildGasStation(p: PlanetDef): THREE.Group {
   body.add(beacon);
 
   // thin dark harvesting tether dipping into the upper cloud deck
-  const tetherLen = p.radius * 0.24;
-  const tether = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.015, r * 0.009, tetherLen, 6), MAT.metalDark);
+  const tetherLen = p.radius * 0.35;
+  const tether = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.014, r * 0.008, tetherLen, 6), MAT.metalDark);
   tether.position.y = -r * 0.62 - tetherLen * 0.5;
   root.add(tether);
 
@@ -272,11 +275,11 @@ function buildPlanet(p: PlanetDef): THREE.Group {
   );
   surface.name = 'surface';
   surface.rotation.z = 0.25;
-  const halo = haloShell(p, HALO_SCALE, 3.2, p.kind === 'gas-storm' ? 0.42 : 0.45, atmo);
+  const halo = haloShell(p, HALO_SCALE, p.kind === 'gas-storm' ? 4.5 : 3.2, p.kind === 'gas-storm' ? 0.38 : 0.45, atmo);
   g.add(surface, halo);
   const timeMats: THREE.ShaderMaterial[] = [];
   if (p.kind === 'gas-storm') {
-    g.add(haloShell(p, HALO_SCALE_NARROW, 5.5, 0.36, atmo));
+    g.add(haloShell(p, HALO_SCALE_NARROW, 5.5, 0.24, atmo));
     timeMats.push(surface.material as THREE.ShaderMaterial);
     const gasStation = buildGasStation(p);
     gasStation.name = 'gasStation';
@@ -467,9 +470,10 @@ export function buildSpace(): SpaceView {
         if (gs) {
           const base = gs.userData.basePos as THREE.Vector3;
           const rad = gs.userData.radial as THREE.Vector3;
-          gs.position.copy(base).addScaledVector(rad, Math.sin(t * 0.6) * 1.8);
+          const amp = (gs.userData.bobAmp as number) ?? 2.9;
+          gs.position.copy(base).addScaledVector(rad, Math.sin(t * 0.6) * amp);
           const body = gs.getObjectByName('gasStationBody');
-          if (body) body.rotation.y = t * 0.14;
+          if (body) body.rotation.y += dt * 0.25;
           const gb = gs.getObjectByName('gasBeacon');
           if (gb) gb.scale.setScalar(1 + 0.45 * Math.max(0, Math.sin(t * 3.2)));
         }

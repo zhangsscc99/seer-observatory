@@ -314,12 +314,18 @@ export function flareTexture(): THREE.Texture {
 
 /** equirect planet albedo by recipe */
 export function planetTexture(p: PlanetDef): THREE.Texture {
-  const W = 512;
-  const H = 256;
+  const isStorm = p.kind === 'gas-storm';
+  const W = isStorm ? 1024 : 512;
+  const H = isStorm ? 512 : 256;
   const [c, g] = canvas(W, H);
   const img = g.createImageData(W, H);
   const n = makeNoise(p.seed, 8);
   const n2 = makeNoise(p.seed + 100, 8);
+  const nWarp1 = isStorm ? makeNoise(p.seed, 16) : n;
+  const nWarp2 = isStorm ? makeNoise(p.seed + 17, 32) : n2;
+  const nTurb = isStorm ? makeNoise(p.seed + 31, 64) : n2;
+  const nWisp = isStorm ? makeNoise(p.seed + 53, 32) : n;
+  const nMacro = isStorm ? makeNoise(p.seed + 71, 4) : n;
   const cols = p.colors.map((h) => [(h >> 16) & 255, (h >> 8) & 255, h & 255]);
   const mix = (a: number[], b: number[], t: number): number[] => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
   const ss = (a: number, b: number, x: number): number => {
@@ -340,41 +346,57 @@ export function planetTexture(p: PlanetDef): THREE.Texture {
         const storm = ss(0.62, 0.8, n2(u * 0.7, v * 2.2));
         rgb = mix(mix(cols[0], cols[1], band), cols[2], Math.min(1, storm + ss(0.75, 1, band) * 0.5));
       } else if (p.kind === 'gas-storm') {
-        const warp = (n(u, v) - 0.5) * 0.6;
-        const wLat = vNorm + warp * 0.09;
-        const b1 = Math.sin(wLat * Math.PI * 7.0 + n2(u * 0.6, v * 1.4) * 1.1);
-        const b2 = Math.sin(wLat * Math.PI * 15.0 - warp * 2.4);
-        const b3 = Math.sin(wLat * Math.PI * 29.0 + n(u * 1.8, v * 3.0) * 1.8);
-        const turb = n2(u * 3.2, v * 5.6) * 2.0 - 1.0;
-        const bandVal = 0.5 + 0.28 * b1 + 0.14 * b2 + 0.06 * b3 + 0.055 * turb;
-        rgb = mix(mix(cols[0], cols[1], ss(0.20, 0.56, bandVal)), cols[2], ss(0.56, 0.90, bandVal));
-        const fine = (n2(u * 5.0, v * 8.0) - 0.5) * 0.12;
+        const w1 = nWarp1(uNorm * 16, vNorm * 9.6) * 2 - 1;
+        const w2 = nWarp2(uNorm * 32, vNorm * 21.2) * 2 - 1;
+        const qv = vNorm + 0.045 * w1 + 0.02 * w2;
+        const p1 = (nWarp1(uNorm * 16, vNorm * 6 + 3.1) - 0.5) * 1.8;
+        const p2 = (nWarp2(uNorm * 32, vNorm * 11 + 7.4) - 0.5) * 2.2;
+        const p3 = (nWisp(uNorm * 32, vNorm * 16 + 1.7) - 0.5) * 2.5;
+        const p4 = (nTurb(uNorm * 64, vNorm * 22 + 5.3) - 0.5) * 2.8;
+        const b1 = Math.sin(qv * Math.PI * 6.5 + p1);
+        const b2 = Math.sin(qv * Math.PI * 14.0 + p2);
+        const b3 = Math.sin(qv * Math.PI * 26.0 + p3);
+        const b4 = Math.sin(qv * Math.PI * 44.0 + p4);
+        const turb = (nTurb(uNorm * 64, vNorm * 28) * 2 - 1) * 0.055;
+        const wisp = (nWisp(uNorm * 32 + b1 * 0.75, vNorm * 7.5) * 2 - 1) * 0.075;
+        const bandVal = 0.60 + 0.14 * b1 + 0.11 * b2 + 0.065 * b3 + 0.045 * b4 + turb + wisp;
+        rgb = mix(mix(cols[0], cols[1], ss(0.3, 0.62, bandVal)), cols[2], ss(0.62, 0.92, bandVal));
+        const macro = 0.88 + 0.24 * nMacro(uNorm * 4, vNorm * 3);
+        const fine = (nTurb(uNorm * 64 + 11, vNorm * 32 + 4) - 0.5) * 0.1;
+        const lumaMul = macro * (1 + fine);
         rgb = [
-          Math.max(0, Math.min(255, rgb[0] * (1 + fine))),
-          Math.max(0, Math.min(255, rgb[1] * (1 + fine))),
-          Math.max(0, Math.min(255, rgb[2] * (1 + fine))),
+          Math.max(0, Math.min(255, rgb[0] * lumaMul)),
+          Math.max(0, Math.min(255, rgb[1] * lumaMul)),
+          Math.max(0, Math.min(255, rgb[2] * lumaMul)),
         ];
         // darker polar hoods
-        const pole = ss(0.32, 0.48, Math.abs(vNorm - 0.5));
-        rgb = mix(rgb, [cols[0][0] * 0.7, cols[0][1] * 0.7, cols[0][2] * 0.7], pole * 0.75);
-        // giant anticyclonic storm eye at u≈0.62, v≈0.42 (w≈0.16, h≈0.09)
+        const pole = ss(0.33, 0.48, Math.abs(vNorm - 0.5) + w1 * 0.03);
+        rgb = mix(rgb, [cols[0][0] * 0.68, cols[0][1] * 0.68, cols[0][2] * 0.68], pole * 0.72);
+        // giant anticyclonic storm eye at u≈0.62, v≈0.42
         let du = uNorm - 0.62;
         du -= Math.round(du);
         const dv = vNorm - 0.42;
-        const ex = du / 0.08;
-        const ey = dv / 0.045;
+        const ex = du / 0.082;
+        const ey = dv / 0.046;
         const er = Math.hypot(ex, ey);
-        if (er < 1.35) {
+        if (er < 1.4) {
           const ang = Math.atan2(ey, ex);
-          const swirlAng = ang + (1.35 - er) * 3.4;
-          const sn = n2(Math.cos(swirlAng) * er * 1.4 + 4, Math.sin(swirlAng) * er * 1.4 + 4);
-          const arm = 0.5 + 0.5 * Math.sin(swirlAng * 3.0 + sn * 3.2);
-          const ringMask = ss(0.58, 0.88, er) * (1 - ss(0.96, 1.32, er));
-          rgb = mix(rgb, [cols[0][0] * 0.66, cols[0][1] * 0.66, cols[0][2] * 0.66], ringMask * 0.82);
-          const bodyMask = 1 - ss(0.62, 1.02, er);
-          const swirlCol = mix(cols[1], cols[2], 0.35 + 0.65 * (arm * 0.55 + sn * 0.45));
-          const eyeCol = mix(swirlCol, [255, 245, 224], ss(0.45, 0.0, er) * 0.75);
-          rgb = mix(rgb, eyeCol, bodyMask);
+          const sn = nWisp(uNorm * 32, vNorm * 18);
+          const sn2 = nTurb(uNorm * 64, vNorm * 28);
+          const erW = er + (sn - 0.5) * 0.18 + (sn2 - 0.5) * 0.1;
+          const spiral = 0.5 + 0.5 * Math.sin(3.0 * (ang + 2.2 * Math.log(er + 0.15)) + (sn - 0.5) * 3.8 + (sn2 - 0.5) * 2.2);
+          const armMix = ss(0.2, 0.88, spiral * 0.68 + sn2 * 0.32) * ss(0.18, 0.45, er) * (1 - ss(0.75, 1.0, er));
+          const swirlMid = mix([cols[0][0] * 0.92, cols[0][1] * 0.84, cols[0][2] * 0.78], cols[1], 0.74);
+          const swirlCol = mix(swirlMid, cols[2], armMix * 0.56 + (sn - 0.5) * 0.12);
+          const coreBoost = ss(0.35, 0.03, erW);
+          const eyeInterior = mix(swirlCol, [252, 240, 218], coreBoost * 0.78);
+          const bodyMask = 1 - ss(0.76, 1.08, erW);
+          rgb = mix(rgb, eyeInterior, bodyMask);
+          const ringMask = ss(0.75, 0.88, erW) * (1 - ss(0.95, 1.05, erW));
+          const ringCol = [cols[0][0] * 0.56, cols[0][1] * 0.5, cols[0][2] * 0.46];
+          rgb = mix(rgb, ringCol, ringMask * (0.68 + 0.18 * sn));
+          const rimMask = ss(1.02, 1.07, erW) * (1 - ss(1.11, 1.15, erW));
+          rgb = mix(rgb, cols[2], rimMask * (0.18 + 0.1 * sn));
         }
       } else if (p.kind === 'ocean') {
         const hgt = n(u, v);

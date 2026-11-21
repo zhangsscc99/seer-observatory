@@ -24,33 +24,82 @@ const THRESH = {
 };
 
 // ── private preview server over ./dist ───────────────────────────────
+const EXPLICIT_URL = process.env.SEER_URL;
 let server = null;
-let URL = process.env.SEER_URL;
-if (!URL) {
+let serverPort = 0;
+let URL = EXPLICIT_URL || '';
+
+async function pingHealth(port) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(1500) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function spawnPreview() {
+  if (server) {
+    server._stopping = true;
+    server.kill();
+    server = null;
+  }
   if (!existsSync(path.join(ROOT, 'dist/index.html'))) {
     console.error('FAIL — dist/ missing, run `npm run build` first');
     process.exit(1);
   }
   const port = 3900 + Math.floor(Math.random() * 90);
-  server = spawn(process.execPath, [path.join(ROOT, 'server/index.js')], {
+  const child = spawn(process.execPath, [path.join(ROOT, 'server/index.js')], {
     env: { ...process.env, PORT: String(port), SEER_DIST: path.join(ROOT, 'dist') },
-    stdio: 'ignore',
+    stdio: ['ignore', 'ignore', 'pipe'],
   });
+  let stderr = '';
+  child.stderr?.on('data', (chunk) => {
+    stderr += chunk.toString();
+  });
+  child.on('exit', (code, signal) => {
+    if (!child._stopping) {
+      console.error(`preview server (port ${port}) exited unexpectedly: code=${code} signal=${signal}${stderr ? `\n${stderr.trim()}` : ''}`);
+    }
+  });
+  child.on('error', (err) => {
+    console.error(`preview server (port ${port}) error: ${err.message}`);
+  });
+  server = child;
+  serverPort = port;
   URL = `http://127.0.0.1:${port}/seer/`;
   for (let i = 0; i < 40; i++) {
-    try {
-      if ((await fetch(`http://127.0.0.1:${port}/api/health`)).ok) break;
-    } catch {}
+    if (child.exitCode !== null) break;
+    if (await pingHealth(port)) return true;
     await new Promise((r) => setTimeout(r, 150));
   }
+  return false;
 }
-const cleanup = () => server?.kill();
+
+async function ensureServer() {
+  if (EXPLICIT_URL) return;
+  if (server && server.exitCode === null && (await pingHealth(serverPort))) return;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    if (server) console.log(`preview server health check failed; respawning (${attempt}/2)`);
+    if (await spawnPreview()) return;
+  }
+  console.error('FAIL — preview server failed to become healthy after 2 attempts');
+  process.exit(1);
+}
+
+const cleanup = () => {
+  if (server) {
+    server._stopping = true;
+    server.kill();
+  }
+};
 process.on('exit', cleanup);
 
 /** Open the game in a fresh browser; WSL chromium navigation occasionally
  *  wedges, so retry up to 3 times with a new process each time. */
 async function open(width, height, errors) {
   for (let attempt = 1; attempt <= 3; attempt++) {
+    await ensureServer();
     const browser = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
     try {
       const page = await browser.newPage({ viewport: { width, height }, hasTouch: true });
@@ -192,18 +241,22 @@ for (const [w, h, gate] of VIEWS) {
   const spacePass = report(`space ${tag}${gate ? '' : ' (info)'}`, space, THRESH.space);
   if (gate && !spacePass) ok = false;
 
-  // icer close-up: 3/4 view at 3.2R, 12° above the ring plane — terminator,
-  // Cassini division and the anti-sun umbra arc should all read
-  const focused = await page.evaluate(() => window.__seer.focusPlanet('icer'));
-  if (!focused) {
-    console.log('FAIL  focusPlanet(icer) returned false');
-    ok = false;
-  } else {
-    await waitFrames(page, 8);
-    png = await screenshotWithRetry(page, `icer ${tag}`);
-    writeFileSync(path.join(SHOTS, `icer-${tag}.png`), png);
-    const icer = await stats(page, png);
-    console.log(`── icer ${tag} (info)  mean ${icer.mean.toFixed(1)}  p95 ${icer.p95.toFixed(1)}`);
+  // planet close-ups (info-only): icer 3/4 ring view + gas-storm banded vortex + station
+  for (const [id, shotName] of [
+    ['icer', 'icer'],
+    ['gas-storm', 'gas'],
+  ]) {
+    const focused = await page.evaluate((pid) => window.__seer.focusPlanet(pid), id);
+    if (!focused) {
+      console.log(`FAIL  focusPlanet(${id}) returned false`);
+      ok = false;
+    } else {
+      await waitFrames(page, 8);
+      png = await screenshotWithRetry(page, `${shotName} ${tag}`);
+      writeFileSync(path.join(SHOTS, `${shotName}-${tag}.png`), png);
+      const st = await stats(page, png);
+      console.log(`── ${shotName} ${tag} (info)  mean ${st.mean.toFixed(1)}  p95 ${st.p95.toFixed(1)}`);
+    }
   }
   await browser.close();
 }
@@ -212,7 +265,7 @@ if (errors.length) {
   ok = false;
   console.log(`FAIL  js errors:\n${errors.join('\n')}`);
 }
-console.log(`shots: ${path.relative(ROOT, SHOTS)}/{cabin,space,icer}-{844x390,390x844}.png`);
+console.log(`shots: ${path.relative(ROOT, SHOTS)}/{cabin,space,gas,icer}-{844x390,390x844}.png`);
 console.log(ok ? 'LOOK OK' : 'LOOK FAILED');
 cleanup();
 process.exit(ok ? 0 : 1);

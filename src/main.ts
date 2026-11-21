@@ -440,6 +440,10 @@ window.__seer = {
         .addScaledVector(t, Math.sin(az))
         .multiplyScalar(Math.cos(el))
         .addScaledVector(n, Math.sin(el));
+    } else if (p.kind === 'gas-storm') {
+      // 3/4 lit view with ~15° elevation so zonal bands, storm eye and station read
+      dist = p.radius * 2.6;
+      dir.set(0.75, Math.sin((15 * Math.PI) / 180), -0.6).normalize();
     }
     ship.pos.x = p.pos.x + dir.x * dist;
     ship.pos.y = p.pos.y + dir.y * dist;
