@@ -98,3 +98,12 @@ npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measu
 | D.2 | pm2 `seer-observatory` @ 3029 | `pm2 describe seer-observatory \| grep -E "status\|script path"` |
 | D.3 | 部署门：build → 备份 → 部署 → 重启 → 健康检查 → 失败回滚 | `bash scripts/ci-deploy.sh` |
 | D.4 | 体积：首屏 JS gzip < 1.5 MB；three 之外代码 < 400 KB | `npm run build`（看 gzip 列）；`cat src/**/*.ts \| wc -c` |
+
+## 已知待办（M7 走查后，下一轮优先）
+
+| # | 问题 | 证据 | 验收 |
+| --- | --- | --- | --- |
+| T1 | HUD 顶部「档案 / 返回舱内 / 静音」视觉高度 ~34–40px，低于移动端 48px 触控标准 | `e2e/shots/gas-390x844.png` | DOM 实测三者 ≥48px 且互不重叠；`node e2e/smoke.mjs` 通过 |
+| T2 | `measure-look` 对竖屏 info-only 行仍打印 `FAIL`（不应有 PASS/FAIL 字样），易被误读为闸门失败 | 一次完整跑的输出 | 竖屏行只打印 `info`，闸门结论只看横屏 |
+| T3 | gas-storm 条带仍偏平滑，缺高频碎云/丝状卷曲；风暴眼偏同心椭圆，螺旋臂可再强化 | `e2e/shots/gas-844x390.png` | 特写里能数出 ≥3 条螺旋臂、条带边缘有破碎感（人工评审 + measure 不退化） |
+| T4 | 特写里悬浮采集站偏小、易与飞船剪影混淆 | 同上 | 站体在特写里 ≥1/5 画面高、能辨认环台/塔/窗光 |
