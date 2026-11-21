@@ -719,10 +719,19 @@ export function binaryTexture(p: PlanetDef): THREE.Texture {
       let rgb = mix(warmRgb, coolRgb, coolFrac);
 
       // Luminous twilight dividing band along hemi ≈ 0 (textured with swirling cirrus)
-      const twiBand = Math.exp(-(hemi * hemi) / (0.145 * 0.145));
+      const twiBand = Math.exp(-(hemi * hemi) / (0.135 * 0.135));
       const twiCol = mix(twilightWarm, twilightCool, ss(-0.14, 0.14, hemi));
-      const twiStrength = twiBand * (0.48 + 0.42 * cirrus + 0.22 * tuftMask);
-      rgb = mix(rgb, twiCol, Math.min(0.92, twiStrength));
+      const twiStrength = twiBand * (0.46 + 0.42 * cirrus + 0.22 * tuftMask);
+      rgb = mix(rgb, twiCol, Math.min(0.90, twiStrength));
+
+      // 3 flanking fine cirrus cloud bands on each side of the twilight belt
+      const absH = Math.abs(hemi);
+      const flank1 = Math.exp(-Math.pow((absH - 0.18 + shear * 0.9) / 0.032, 2));
+      const flank2 = Math.exp(-Math.pow((absH - 0.34 - shear * 1.1) / 0.036, 2));
+      const flank3 = Math.exp(-Math.pow((absH - 0.51 + shear * 0.8) / 0.042, 2));
+      const flankStr = Math.min(1, (flank1 * 0.85 + flank2 * 0.72 + flank3 * 0.58) * (0.42 + 0.58 * cirrus));
+      const flankCol = hemi >= 0 ? [216, 240, 255] : [255, 224, 184];
+      rgb = mix(rgb, flankCol, flankStr * 0.62);
 
       // Fine bright cirrus wisps overlaid across both hemispheres
       const wispBoost = ss(0.45, 0.92, cirrus) * (0.28 + 0.34 * tuftMask);

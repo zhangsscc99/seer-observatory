@@ -9,7 +9,7 @@ import { clamp, damp } from './game/rng.ts';
 import { Robot } from './game/robot.ts';
 import { hazardEffect, SCAN, Scanner, type ScanTarget } from './game/scan.ts';
 import { forwardOf, Ship, SHIP } from './game/ship.ts';
-import { PLANETS, planetById, SECTOR_RADIUS, solidBodies, SUN_DIR, type PlanetDef } from './game/space.ts';
+import { BINARY_STARS, PLANETS, planetById, SECTOR_RADIUS, solidBodies, SUN_DIR, type PlanetDef } from './game/space.ts';
 import { Controls } from './input/controls.ts';
 import { buildCabin } from './render/cabin.ts';
 import { Hud } from './render/hud.ts';
@@ -76,7 +76,7 @@ try {
   targetId = null;
 }
 
-const cam = { yaw: 0, pitch: 0.3, zoom: 1, shipYaw: 0, shipPitch: 0 };
+const cam = { yaw: 0, pitch: 0.3, zoom: 1, shipYaw: 0, shipPitch: 0, focusFovV: 0 };
 const CAM_PITCH_MIN = 0.14;
 const CAM_PITCH_MAX = 1.15;
 
@@ -98,6 +98,7 @@ const mode = new ModeMachine('cabin', {
       ship = new Ship({ x: 0, y: 10, z: -40 }, 0);
       cam.shipYaw = 0.5; // start off-axis so the camera swings in behind the ship
       cam.shipPitch = -0.15;
+      cam.focusFovV = 0;
     } else {
       // step back out of the hologram, facing the room
       robot.x = CABIN.pedestal.x;
@@ -348,7 +349,11 @@ function updateSpace(dt: number, active: boolean): void {
   look.y += 1.5;
   camera.lookAt(look);
   camera.rotateZ(ship.roll * 0.25);
-  camera.fov = fovFor(60, 60) + ship.speedFrac * 14 + (ship.boosting ? 4 : 0);
+  if (active && (Math.abs(controls.moveX) > 0.05 || Math.abs(controls.moveY) > 0.05 || controls.boost || controls.brake)) {
+    cam.focusFovV = 0;
+  }
+  const baseFov = fovFor(60, 60) + ship.speedFrac * 14 + (ship.boosting ? 4 : 0);
+  camera.fov = cam.focusFovV > 0 ? Math.max(baseFov, cam.focusFovV) : baseFov;
   camera.updateProjectionMatrix();
   hud.setFlight(ship.speed, ship.energy / SHIP.energyMax, ship.depleted);
   hud.setTip(ship.depleted ? '推进能量耗尽 · 充能中' : Math.hypot(ship.pos.x, ship.pos.y, ship.pos.z) > SECTOR_RADIUS ? '已到达星域边界 · 自动返航' : '');
@@ -436,6 +441,7 @@ window.__seer = {
     if (!p || mode.mode !== 'space') return false;
     const dir = new THREE.Vector3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z);
     let dist = p.radius * 3;
+    cam.focusFovV = 0;
     if (p.kind === 'ice-ring') {
       dist = p.radius * 3.2;
       const n = new THREE.Vector3(0, 1, 0).applyQuaternion(RING_QUAT);
@@ -457,9 +463,16 @@ window.__seer = {
       dist = p.radius * 2.55;
       dir.set(0.48, 0.14, -0.86).normalize();
     } else if (p.kind === 'binary') {
-      // ~3.2R approach off anti-sun: frames dual cool/warm lit planet with warm companion star in view
-      dist = p.radius * 3.15;
-      dir.set(-0.78, 0.14, 0.61).normalize();
+      // 3.3R outer-side framing (away from twin-star midpoint, slight +Y lift) so both star discs + planet fit cleanly
+      dist = p.radius * 3.3;
+      const sA = BINARY_STARS[0];
+      const sB = BINARY_STARS[1];
+      const midX = (sA.pos.x + sB.pos.x) * 0.5;
+      const midY = (sA.pos.y + sB.pos.y) * 0.5;
+      const midZ = (sA.pos.z + sB.pos.z) * 0.5;
+      dir.set(p.pos.x - midX, p.pos.y - midY, p.pos.z - midZ).normalize();
+      dir.y += 0.06;
+      dir.normalize();
     }
     ship.pos.x = p.pos.x + dir.x * dist;
     ship.pos.y = p.pos.y + dir.y * dist;
@@ -475,6 +488,28 @@ window.__seer = {
     ship.energy = SHIP.energyMax;
     cam.shipYaw = ship.yaw;
     cam.shipPitch = ship.pitch;
+    if (p.kind === 'binary') {
+      // angular-separation / FOV check: ensure both stars stay inside the frame with margin on landscape & portrait
+      const portrait = aspect < 1;
+      const speedFrac = ship.speedFrac;
+      const back = (portrait ? 19 : 14) + speedFrac * 5;
+      const f = forwardOf(ship.yaw, ship.pitch);
+      const camPos = new THREE.Vector3(ship.pos.x - f.x * back, ship.pos.y - f.y * back + (portrait ? 5.5 : 4), ship.pos.z - f.z * back);
+      const lookPos = new THREE.Vector3(ship.pos.x + f.x * 14, ship.pos.y + f.y * 14 + 1.5, ship.pos.z + f.z * 14);
+      const fwd = lookPos.sub(camPos).normalize();
+      const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+      const up = new THREE.Vector3().crossVectors(right, fwd);
+      let reqTanV = 0;
+      const margin = 1.32;
+      for (const s of BINARY_STARS) {
+        const v = new THREE.Vector3(s.pos.x - camPos.x, s.pos.y - camPos.y, s.pos.z - camPos.z);
+        const z = Math.max(1, v.dot(fwd));
+        const x = Math.abs(v.dot(right)) + s.radius * 1.4;
+        const y = Math.abs(v.dot(up)) + s.radius * 1.4;
+        reqTanV = Math.max(reqTanV, (y / z) * margin, ((x / z) * margin) / Math.max(0.35, aspect));
+      }
+      cam.focusFovV = clamp((2 * Math.atan(reqTanV) * 180) / Math.PI, 60, 102);
+    }
     return true;
   },
 };

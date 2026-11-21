@@ -118,6 +118,7 @@ npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measu
 | 9.3 | 扫描链路与星图台：`TARGETS` 自动包含、扫描入 `seer.archive`、星图台选中 `binary` 切冷暖双色全息球与太空标记环、靠近/选中时顶部青色警示条展示 `photon` 文案 | `grep -n "applyTargetHolo\|setHoloColor\|photon" src/main.ts src/render/cabin.ts src/render/hud.ts` |
 | 9.4 | look gate 出图：`focusPlanet('binary')` 3.15R 偏离反日方向使伴星入画；`measure-look.mjs` 产出 `binary-{844x390,390x844}.png`（阈值不放宽） | `grep -n "binary" src/main.ts scripts/measure-look.mjs`；`node --check scripts/measure-look.mjs` |
 | 9.5 | 走查待办 T1/T2：竖屏 390×844 顶部 `#archBtn` / `#dock` / `#mute` 高度 ≥48px 且不重叠（`smoke.mjs` 断言）；`measure-look.mjs` 竖屏 info-only 行只打印 `info` | `node e2e/smoke.mjs` → `SMOKE OK`；`grep -n "info  " scripts/measure-look.mjs` |
+| 9.6 | F906 双星特写可读性：`focusPlanet('binary')` 改至背向两星中点 `3.3R` + 两星张角/FOV 检查（横竖屏两星同框）；主星 `1.12R` / 伴星 `0.86R` 强化白热核心 + 径向日冕/耀斑对比（盘面均 ≥18px）；行星晨昏带两侧各加 3 条异速细卷云带 + 柔化双色 halo（夜侧 ≥0.05） | `npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measure-look.mjs` → `LOOK OK`；看 `e2e/shots/binary-{844x390,390x844}.png` |
 
 ## 已知待办（M8 走查后，下一轮优先）
 

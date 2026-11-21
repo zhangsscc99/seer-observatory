@@ -210,8 +210,8 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
-// self-luminous twin star photosphere: incandescent white-hot core fading to
-// color-temperature outer disc with subtle boiling plasma shimmer
+// self-luminous twin star photosphere: incandescent white-hot core fading smoothly
+// into saturated color-temperature chromosphere (avoids flat solid-disc ACES clipping)
 const BINARY_STAR_FRAG = /* glsl */ `
 uniform vec3 uColor; uniform float uIntensity; uniform float uTime;
 varying vec3 vN; varying vec3 vW;
@@ -230,65 +230,105 @@ void main() {
   float ndv = max(dot(n, v), 0.0);
   float boil = vnoise3(n * 8.5 + vec3(uTime * 0.25, -uTime * 0.18, uTime * 0.21));
   float fine = vnoise3(n * 22.0 - vec3(uTime * 0.35, uTime * 0.28, -uTime * 0.19));
-  float core = pow(ndv, 0.58);
-  vec3 hotCore = mix(uColor, vec3(1.0, 0.99, 0.97), 0.68 * core);
+  float core = pow(ndv, 1.35);
+  float innerHot = smoothstep(0.42, 0.96, ndv);
+  vec3 outerCol = mix(uColor * 0.68, uColor * 1.12, pow(ndv, 0.65));
+  vec3 photosphere = mix(outerCol, vec3(1.0, 0.99, 0.97) * 1.85, innerHot * 0.88);
   float shimmer = 0.92 + 0.14 * boil + 0.08 * fine;
-  float limbGlow = pow(1.0 - ndv, 2.4) * 0.55;
-  vec3 col = (hotCore * (1.15 + 0.55 * core) * shimmer + uColor * limbGlow) * uIntensity;
+  vec3 col = photosphere * shimmer * (0.68 + 0.46 * core) * uIntensity;
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
 
-// binary-system planet: dual-star cool/warm illumination, subtle cirrus drift,
-// dual-sided fresnel rim (cool on star-A side, warm on star-B side), night >= 0.08
+// binary-system planet: dual-star cool/warm illumination, 3 fine counter-drifting
+// cirrus cloud bands on each side of the twilight belt, soft dual fresnel, night >= 0.08
 const BINARY_PLANET_FRAG = /* glsl */ `
 uniform sampler2D uMap;
 uniform vec3 uStarA; uniform vec3 uColA;
 uniform vec3 uStarB; uniform vec3 uColB;
 uniform float uTime;
 varying vec3 vN; varying vec3 vW; varying vec2 vUv;
+float hash21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise2(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x),
+    mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x),
+    u.y
+  );
+}
 void main() {
   vec3 n = normalize(vN);
   vec3 v = normalize(cameraPosition - vW);
   float ndlA = dot(n, uStarA);
   float ndlB = dot(n, uStarB);
-  float dayA = smoothstep(-0.12, 0.42, ndlA);
-  float dayB = smoothstep(-0.12, 0.42, ndlB);
+  float dayA = smoothstep(-0.14, 0.42, ndlA);
+  float dayB = smoothstep(-0.14, 0.42, ndlB);
+  // soft atmospheric twilight wrap so cloud bands read across the backlit crescent face
+  float wrapA = smoothstep(-0.55, 0.25, ndlA);
+  float wrapB = smoothstep(-0.55, 0.25, ndlB);
 
-  // gentle differential cirrus drift so clouds feel alive without smearing detail
+  // differential base deck + counter-sheared upper cirrus sampling
   float lat = (vUv.y - 0.5) * 2.0;
-  float drift = uTime * 0.0022 * (1.0 - 0.45 * lat * lat);
+  float drift = uTime * 0.0024 * (1.0 - 0.45 * lat * lat);
   vec2 uv1 = vec2(vUv.x + drift, clamp(vUv.y, 0.001, 0.999));
-  vec2 uv2 = vec2(vUv.x + drift * 1.9 + 0.002 * sin(vUv.y * 20.0 + uTime * 0.15), clamp(vUv.y, 0.001, 0.999));
-  vec3 albedo = mix(texture2D(uMap, uv1).rgb, texture2D(uMap, uv2).rgb, 0.20);
+  vec2 uv2 = vec2(vUv.x - drift * 1.45 + 0.003 * sin(vUv.y * 24.0 + uTime * 0.18), clamp(vUv.y, 0.001, 0.999));
+  vec3 albedo = mix(texture2D(uMap, uv1).rgb, texture2D(uMap, uv2).rgb, 0.24);
+
+  // 3 fine cirrus cloud bands on each side of the twilight belt (twi = 0) at distinct speeds/directions
+  float twi = ndlA - ndlB;
+  vec3 beltAxis = normalize(cross(uStarA, uStarB));
+  float along = dot(n, beltAxis);
+  float waveA1 = 0.022 * sin(along * 9.0 + uTime * 0.24);
+  float waveA2 = 0.026 * sin(along * 13.0 - uTime * 0.17 + 1.4);
+  float waveA3 = 0.018 * sin(along * 17.0 + uTime * 0.12 + 2.8);
+  float bA1 = exp(-pow((twi - (0.13 + waveA1)) / 0.032, 2.0)) * (0.45 + 0.55 * vnoise2(vec2(along * 11.0 + uTime * 0.18, twi * 22.0)));
+  float bA2 = exp(-pow((twi - (0.28 + waveA2)) / 0.036, 2.0)) * (0.40 + 0.60 * vnoise2(vec2(along * 15.0 - uTime * 0.14, twi * 26.0 + 3.1)));
+  float bA3 = exp(-pow((twi - (0.45 + waveA3)) / 0.040, 2.0)) * (0.35 + 0.65 * vnoise2(vec2(along * 19.0 + uTime * 0.10, twi * 30.0 + 6.4)));
+  float coolCirrus = clamp(bA1 * 0.85 + bA2 * 0.78 + bA3 * 0.65, 0.0, 1.0);
+
+  float waveB1 = 0.022 * sin(along * 10.0 - uTime * 0.22 + 0.7);
+  float waveB2 = 0.026 * sin(along * 14.0 + uTime * 0.16 + 2.1);
+  float waveB3 = 0.018 * sin(along * 18.0 - uTime * 0.11 + 4.0);
+  float bB1 = exp(-pow((twi + (0.13 + waveB1)) / 0.032, 2.0)) * (0.45 + 0.55 * vnoise2(vec2(along * 12.0 - uTime * 0.17, twi * 22.0 + 1.7)));
+  float bB2 = exp(-pow((twi + (0.28 + waveB2)) / 0.036, 2.0)) * (0.40 + 0.60 * vnoise2(vec2(along * 16.0 + uTime * 0.13, twi * 26.0 + 5.2)));
+  float bB3 = exp(-pow((twi + (0.45 + waveB3)) / 0.040, 2.0)) * (0.35 + 0.65 * vnoise2(vec2(along * 20.0 - uTime * 0.09, twi * 30.0 + 8.3)));
+  float warmCirrus = clamp(bB1 * 0.85 + bB2 * 0.78 + bB3 * 0.65, 0.0, 1.0);
+
+  albedo = mix(albedo, vec3(0.84, 0.94, 1.0), coolCirrus * 0.52);
+  albedo = mix(albedo, vec3(1.0, 0.88, 0.72), warmCirrus * 0.52);
 
   // dual-color-temperature lighting with guaranteed night-side floor (>= 0.08)
-  vec3 ambient = vec3(0.09, 0.10, 0.13);
-  vec3 lightA = uColA * dayA * 0.88;
-  vec3 lightB = uColB * dayB * 0.74;
+  vec3 ambient = vec3(0.085, 0.095, 0.125);
+  vec3 lightA = uColA * (dayA * 0.86 + wrapA * 0.24);
+  vec3 lightB = uColB * (dayB * 0.76 + wrapB * 0.22);
   vec3 col = albedo * (ambient + lightA + lightB);
+  // subtle illuminated scatter on the fine cirrus ribbons near the terminator
+  col += vec3(0.62, 0.86, 1.0) * coolCirrus * (0.10 + 0.18 * wrapA);
+  col += vec3(1.0, 0.72, 0.42) * warmCirrus * (0.10 + 0.18 * wrapB);
 
   // subtle twin-star specular glints on high cirrus clouds
-  float specA = pow(max(dot(n, normalize(v + uStarA)), 0.0), 42.0) * 0.22 * dayA;
-  float specB = pow(max(dot(n, normalize(v + uStarB)), 0.0), 36.0) * 0.20 * dayB;
+  float specA = pow(max(dot(n, normalize(v + uStarA)), 0.0), 42.0) * 0.20 * dayA;
+  float specB = pow(max(dot(n, normalize(v + uStarB)), 0.0), 36.0) * 0.18 * dayB;
   col += uColA * specA + uColB * specB;
 
-  // dual-sided fresnel inner rim: cool cyan-blue on star-A face, warm amber-orange on star-B face
-  float fres = pow(1.0 - max(dot(n, v), 0.0), 2.5);
-  float rimA = smoothstep(-0.32, 0.36, ndlA);
-  float rimB = smoothstep(-0.32, 0.36, ndlB);
-  col += vec3(0.56, 0.84, 1.0) * fres * rimA * 0.78;
-  col += vec3(1.0, 0.66, 0.34) * fres * rimB * 0.72;
+  // softer dual-sided fresnel inner rim: cool cyan-blue on star-A face, warm amber-orange on star-B face
+  float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+  float rimA = smoothstep(-0.32, 0.38, ndlA);
+  float rimB = smoothstep(-0.32, 0.38, ndlB);
+  col += vec3(0.50, 0.82, 1.0) * fres * rimA * 0.52;
+  col += vec3(1.0, 0.60, 0.28) * fres * rimB * 0.48;
   // subtle night-side indigo scatter so silhouette stays crisp
-  col += vec3(0.18, 0.26, 0.42) * fres * (1.0 - max(rimA, rimB)) * 0.16;
+  col += vec3(0.18, 0.26, 0.42) * fres * (1.0 - max(rimA, rimB)) * 0.14;
 
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
 
-// dual-tinted outer halo shell for the binary planet (BackSide, additive)
+// softer dual-tinted outer halo shell for the binary planet (BackSide, additive)
 const BINARY_HALO_FRAG = /* glsl */ `
 uniform vec3 uStarA; uniform vec3 uColA;
 uniform vec3 uStarB; uniform vec3 uColB;
@@ -299,9 +339,14 @@ void main() {
   vec3 v = normalize(cameraPosition - vW);
   float d = clamp(-dot(n, v) / uEdge, 0.0, 1.0);
   float a = pow(d, uPow);
-  float litA = smoothstep(-0.35, 0.35, dot(n, uStarA));
-  float litB = smoothstep(-0.35, 0.35, dot(n, uStarB));
-  vec3 tint = uColA * litA * 0.85 + uColB * litB * 0.80;
+  float litA = smoothstep(-0.30, 0.42, dot(n, uStarA));
+  float litB = smoothstep(-0.30, 0.42, dot(n, uStarB));
+  vec3 tintA = uColA * vec3(0.76, 0.92, 1.0);
+  vec3 tintB = uColB * vec3(1.0, 0.74, 0.44);
+  vec3 tint = tintA * litA * 0.72 + tintB * litB * 0.68;
+  // prevent overlapping star-lit limbs from blowing out into a hard white ring
+  float peak = max(1.0, max(tint.r, max(tint.g, tint.b)));
+  tint /= peak;
   gl_FragColor = vec4(tint * a * uGain, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -643,37 +688,60 @@ function starHaloShell(radius: number, scale: number, peakPow: number, gain: num
   );
 }
 
-/** self-luminous twin star with 1.14R / 1.28R paired corona halos + billboard flare */
+/** self-luminous twin star with paired corona halos + radial corona + billboard flare */
 function buildBinaryStar(s: BinaryStarDef): { group: THREE.Group; mat: THREE.ShaderMaterial; flare: THREE.Sprite; baseScale: number } {
   const g = new THREE.Group();
   g.name = s.id;
   g.position.set(s.pos.x, s.pos.y, s.pos.z);
-  const col = new THREE.Color(s.color);
+  const isPrimary = s.intensity > 1.8;
+  // visually emphasize primary > companion while keeping both discs >= 22px in 844x390
+  const visR = s.radius * (isPrimary ? 1.12 : 0.86);
+  const col = new THREE.Color(isPrimary ? 0x8cd0ff : 0xff8c38);
+  const haloCol = new THREE.Color(isPrimary ? 0x7ac6ff : 0xff7b24);
   const mat = new THREE.ShaderMaterial({
     vertexShader: PLANET_VERT,
     fragmentShader: BINARY_STAR_FRAG,
     uniforms: {
       uColor: { value: col },
-      uIntensity: { value: s.intensity },
+      uIntensity: { value: isPrimary ? 2.35 : 1.7 },
       uTime: { value: 0 },
     },
   });
-  const sphere = new THREE.Mesh(new THREE.SphereGeometry(s.radius, 48, 32), mat);
-  const haloInner = starHaloShell(s.radius, 1.14, 3.2, 0.72, col);
-  const haloOuter = starHaloShell(s.radius, 1.28, 1.9, 0.48, col);
-  const baseScale = s.radius * (s.intensity > 1.8 ? 6.2 : 5.6);
+  const sphere = new THREE.Mesh(new THREE.SphereGeometry(visR, 48, 32), mat);
+  const haloInner = starHaloShell(visR, isPrimary ? 1.24 : 1.22, isPrimary ? 2.4 : 2.5, isPrimary ? 0.92 : 0.86, haloCol);
+  const haloOuter = starHaloShell(visR, isPrimary ? 1.58 : 1.50, isPrimary ? 1.65 : 1.75, isPrimary ? 0.62 : 0.54, haloCol);
+  const corona = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: radialTexture(
+        [
+          [0, 'rgba(255,255,255,0.95)'],
+          [0.18, 'rgba(255,255,255,0.68)'],
+          [0.45, 'rgba(255,255,255,0.22)'],
+          [1, 'rgba(255,255,255,0)'],
+        ],
+        256,
+      ),
+      color: haloCol,
+      opacity: isPrimary ? 0.9 : 0.82,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      transparent: true,
+    }),
+  );
+  corona.scale.setScalar(visR * (isPrimary ? 7.2 : 5.6));
+  const baseScale = visR * (isPrimary ? 9.5 : 6.8);
   const flare = new THREE.Sprite(
     new THREE.SpriteMaterial({
       map: flareTexture(),
-      color: col,
-      opacity: s.intensity > 1.8 ? 0.72 : 0.68,
+      color: isPrimary ? 0x9cd8ff : 0xff8830,
+      opacity: isPrimary ? 0.88 : 0.78,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       transparent: true,
     }),
   );
   flare.scale.setScalar(baseScale);
-  g.add(sphere, haloInner, haloOuter, flare);
+  g.add(sphere, haloInner, haloOuter, corona, flare);
   return { group: g, mat, flare, baseScale };
 }
 
@@ -773,8 +841,8 @@ function buildPlanet(p: PlanetDef): THREE.Group {
     // align cool hemisphere toward primary star A, warm hemisphere toward companion B
     surface.rotation.y = 0.55;
     surface.rotation.z = 0.16;
-    const wideHalo = binaryHaloShell(p, HALO_SCALE, 3.0, 0.44, dirA, colA, dirB, colB);
-    const narrowHalo = binaryHaloShell(p, HALO_SCALE_NARROW, 5.4, 0.36, dirA, colA, dirB, colB);
+    const wideHalo = binaryHaloShell(p, 1.14, 3.8, 0.26, dirA, colA, dirB, colB);
+    const narrowHalo = binaryHaloShell(p, 1.045, 6.5, 0.22, dirA, colA, dirB, colB);
     g.add(surface, wideHalo, narrowHalo);
     g.userData.timeMats = [surfaceMat];
     return g;
