@@ -173,7 +173,7 @@ async function stats(page, png) {
   }, png.toString('base64'));
 }
 
-function report(label, s, th) {
+function report(label, s, th, gate = true) {
   const checks = [
     ['mean', s.mean, `${th.meanMin}..${th.meanMax}`, s.mean >= th.meanMin && s.mean <= th.meanMax],
     ['top30', s.top30, 'info', true],
@@ -183,8 +183,12 @@ function report(label, s, th) {
   let ok = true;
   console.log(`── ${label}`);
   for (const [name, v, range, pass] of checks) {
-    ok &&= pass;
-    console.log(`${pass ? 'PASS' : 'FAIL'}  ${name.padEnd(8)} ${v.toFixed(2).padStart(7)}  ${range}`);
+    if (gate) {
+      ok &&= pass;
+      console.log(`${pass ? 'PASS' : 'FAIL'}  ${name.padEnd(8)} ${v.toFixed(2).padStart(7)}  ${range}`);
+    } else {
+      console.log(`info  ${name.padEnd(8)} ${v.toFixed(2).padStart(7)}`);
+    }
   }
   return ok;
 }
@@ -211,7 +215,7 @@ for (const [w, h, gate] of VIEWS) {
   let png = await screenshotWithRetry(page, `cabin ${tag}`);
   writeFileSync(path.join(SHOTS, `cabin-${tag}.png`), png);
   const cabin = await stats(page, png);
-  const cabinPass = report(`cabin ${tag}${gate ? '' : ' (info)'}`, cabin, THRESH.cabin);
+  const cabinPass = report(`cabin ${tag}${gate ? '' : ' (info)'}`, cabin, THRESH.cabin, gate);
   if (gate && !cabinPass) ok = false;
 
   // walk-up shortcut, then the real launch path (proximity gate → transit)
@@ -238,7 +242,7 @@ for (const [w, h, gate] of VIEWS) {
   png = await screenshotWithRetry(page, `space ${tag}`);
   writeFileSync(path.join(SHOTS, `space-${tag}.png`), png);
   const space = await stats(page, png);
-  const spacePass = report(`space ${tag}${gate ? '' : ' (info)'}`, space, THRESH.space);
+  const spacePass = report(`space ${tag}${gate ? '' : ' (info)'}`, space, THRESH.space, gate);
   if (gate && !spacePass) ok = false;
 
   // planet close-ups (info-only): icer 3/4 ring view + gas-storm + red-giant + binary

@@ -92,6 +92,33 @@ await until(() => window.__seer.mode.mode === 'space', 'arrive in space');
 assert.equal(await S(() => document.getElementById('boost').classList.contains('hidden')), false);
 step(`target ${chosen.saved} saved; 启航 → transit → space, flight HUD shown`);
 
+// T1: portrait 390x844 top HUD buttons must be >= 48px touch height and non-overlapping
+await page.setViewportSize({ width: 390, height: 844 });
+await page.waitForTimeout(150);
+const topBtns = await S(() =>
+  ['archBtn', 'dock', 'mute'].map((id) => {
+    const el = document.getElementById(id);
+    const r = el.getBoundingClientRect();
+    return { id, hidden: el.classList.contains('hidden'), left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
+  }),
+);
+for (const b of topBtns) {
+  assert.equal(b.hidden, false, `${b.id} visible in space`);
+  assert.ok(b.height >= 48, `${b.id} height ${b.height} < 48`);
+  assert.ok(b.width >= 48, `${b.id} width ${b.width} < 48`);
+}
+for (let i = 0; i < topBtns.length; i++) {
+  for (let j = i + 1; j < topBtns.length; j++) {
+    const a = topBtns[i];
+    const b = topBtns[j];
+    const sep = a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+    assert.ok(sep, `portrait HUD overlap: ${a.id} vs ${b.id}`);
+  }
+}
+await page.setViewportSize({ width: 844, height: 390 });
+await page.waitForTimeout(100);
+step('portrait 390x844 top HUD buttons >= 48px and non-overlapping');
+
 const v0 = await S(() => window.__seer.ship.speed);
 await page.keyboard.down('Space');
 await page.keyboard.down('KeyD');
