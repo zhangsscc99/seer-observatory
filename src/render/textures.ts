@@ -314,6 +314,7 @@ export function flareTexture(): THREE.Texture {
 
 /** equirect planet albedo by recipe */
 export function planetTexture(p: PlanetDef): THREE.Texture {
+  if (p.kind === 'red-giant') return redGiantTexture(p);
   const isStorm = p.kind === 'gas-storm';
   const W = isStorm ? 1024 : 512;
   const H = isStorm ? 512 : 256;
@@ -458,6 +459,172 @@ export function planetTexture(p: PlanetDef): THREE.Texture {
       img.data[i + 3] = 255;
     }
   }
+  g.putImageData(img, 0, 0);
+  const t = tex(c);
+  t.wrapS = THREE.RepeatWrapping;
+  return t;
+}
+
+/** equirect red-giant photosphere: multi-scale Voronoi convection granules
+ *  (coarse + 3.3x finer cells) with crisp dark intergranular lanes, 16 bright
+ *  flare cores (~#fff2d0), and slight polar darkening / equatorial brightening. */
+export function redGiantTexture(p: PlanetDef): THREE.Texture {
+  const W = 1024;
+  const H = 512;
+  const [c, g] = canvas(W, H);
+  const img = g.createImageData(W, H);
+  const rnd = mulberry32(p.seed + 211);
+
+  const nWarp = makeNoise(p.seed + 11, 16);
+  const nFbm = makeNoise(p.seed + 37, 32);
+  const nMacro = makeNoise(p.seed + 73, 8);
+
+  const cols = p.colors.map((h) => [(h >> 16) & 255, (h >> 8) & 255, h & 255]);
+  const trenchCol = [cols[0][0] * 0.42, cols[0][1] * 0.34, cols[0][2] * 0.3];
+  const hotMidCol = [255, 164, 58];
+  const mix = (a: number[], b: number[], t: number): number[] => [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+  ];
+  const ss = (a: number, b: number, x: number): number => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+
+  // Precompute jittered Voronoi cell centers for two scales (12x6 and 40x20 -> 3.33x ratio)
+  const makeGrid = (nx: number, ny: number, salt: number): { px: Float32Array; py: Float32Array; nx: number; ny: number } => {
+    const px = new Float32Array(nx * ny);
+    const py = new Float32Array(nx * ny);
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        const idx = j * nx + i;
+        px[idx] = i + 0.14 + 0.72 * vhash(i * 19 + salt, j * 31 + salt);
+        py[idx] = j + 0.14 + 0.72 * vhash(i * 37 + salt, j * 17 + salt);
+      }
+    }
+    return { px, py, nx, ny };
+  };
+  const gCoarse = makeGrid(12, 6, p.seed * 3 + 7);
+  const gFine = makeGrid(40, 20, p.seed * 7 + 59);
+
+  // Tileable-in-x Voronoi returning (F2 - F1) edge distance and F1 cell center distance
+  const voronoi = (
+    u: number,
+    v: number,
+    grid: { px: Float32Array; py: Float32Array; nx: number; ny: number },
+  ): [number, number] => {
+    const { px, py, nx, ny } = grid;
+    const gx = ((u % 1) + 1) % 1 * nx;
+    const gy = Math.max(0.001, Math.min(ny - 0.001, v * ny));
+    const ci = Math.floor(gx);
+    const cj = Math.floor(gy);
+    let f1 = 1e9;
+    let f2 = 1e9;
+    for (let dj = -1; dj <= 1; dj++) {
+      const jj = cj + dj;
+      if (jj < 0 || jj >= ny) continue;
+      for (let di = -1; di <= 1; di++) {
+        const ii = ((ci + di) % nx + nx) % nx;
+        const idx = jj * nx + ii;
+        let dx = gx - px[idx];
+        if (dx > nx * 0.5) dx -= nx;
+        else if (dx < -nx * 0.5) dx += nx;
+        const dy = gy - py[idx];
+        const d = dx * dx + dy * dy;
+        if (d < f1) {
+          f2 = f1;
+          f1 = d;
+        } else if (d < f2) {
+          f2 = d;
+        }
+      }
+    }
+    const r1 = Math.sqrt(f1);
+    const r2 = Math.sqrt(f2);
+    return [r2 - r1, r1];
+  };
+
+  // 16 bright active flare cores (concentrated in mid/equatorial belt)
+  const flares: { u: number; v: number; ru: number; rv: number; gain: number }[] = [];
+  for (let i = 0; i < 16; i++) {
+    flares.push({
+      u: rnd(),
+      v: 0.18 + rnd() * 0.64,
+      ru: 0.015 + rnd() * 0.016,
+      rv: 0.012 + rnd() * 0.014,
+      gain: 0.72 + rnd() * 0.28,
+    });
+  }
+
+  for (let y = 0; y < H; y++) {
+    const lat = (y + 0.5) / H;
+    const eq = Math.sin(lat * Math.PI); // 0 at poles, 1 at equator
+    const latMul = 0.74 + 0.32 * Math.pow(eq, 0.65);
+
+    for (let x = 0; x < W; x++) {
+      const uNorm = (x + 0.5) / W;
+      // organic domain warp so intergranular lanes bend like boiling plasma
+      const wx = (nWarp(uNorm * 16, lat * 8) - 0.5) * 0.042;
+      const wy = (nWarp(uNorm * 16 + 5.3, lat * 8 + 2.7) - 0.5) * 0.038;
+      const uW = uNorm + wx;
+      const vW = Math.max(0.002, Math.min(0.998, lat + wy));
+
+      const [edge1, r1] = voronoi(uW, vW, gCoarse);
+      const [edge2] = voronoi(uW + wx * 0.4, Math.max(0.002, Math.min(0.998, vW + wy * 0.4)), gFine);
+
+      const fbm = nFbm(uNorm * 32, lat * 16);
+      const macro = nMacro(uNorm * 8, lat * 4);
+
+      // crisp dark intergranular lanes: coarse super-granules + fine secondary granules
+      const lane1 = ss(0.025, 0.23, edge1 + (fbm - 0.5) * 0.055);
+      const lane2 = ss(0.03, 0.22, edge2 + (fbm - 0.5) * 0.04);
+      const cellBody = lane1 * (0.52 + 0.48 * lane2);
+      const cellDome = ss(0.58, 0.08, r1) * lane1;
+
+      let heat = cellBody * (0.64 + 0.24 * fbm + 0.14 * macro) + cellDome * 0.22;
+      heat = Math.max(0, Math.min(1, heat));
+
+      // 4-stop thermal ramp: deep ember trench -> rust red -> vivid orange -> hot golden-cream
+      let rgb: number[];
+      if (heat < 0.26) {
+        rgb = mix(trenchCol, cols[0], ss(0.0, 0.26, heat));
+      } else if (heat < 0.66) {
+        rgb = mix(cols[0], cols[1], ss(0.26, 0.66, heat));
+      } else if (heat < 0.88) {
+        rgb = mix(cols[1], hotMidCol, ss(0.66, 0.88, heat));
+      } else {
+        rgb = mix(hotMidCol, cols[2], ss(0.88, 1.0, heat) * 0.65);
+      }
+
+      // bright flare cores (faculae / active regions approaching #fff2d0)
+      let flare = 0;
+      for (let k = 0; k < flares.length; k++) {
+        const fl = flares[k];
+        let du = uNorm - fl.u;
+        du -= Math.round(du);
+        const dv = lat - fl.v;
+        const d2 = (du * du) / (fl.ru * fl.ru) + (dv * dv) / (fl.rv * fl.rv);
+        if (d2 < 3.6) {
+          const d = Math.sqrt(d2) + (fbm - 0.5) * 0.35;
+          const spot = ss(1.45, 0.12, d) * fl.gain;
+          if (spot > flare) flare = spot;
+        }
+      }
+      if (flare > 0.001) {
+        rgb = mix(rgb, hotMidCol, Math.min(1, flare * 0.65));
+        rgb = mix(rgb, cols[2], ss(0.22, 0.92, flare) * 0.95);
+      }
+
+      // slightly darker poles, slightly brighter equator
+      const i = (y * W + x) * 4;
+      img.data[i] = Math.min(255, rgb[0] * latMul);
+      img.data[i + 1] = Math.min(255, rgb[1] * latMul);
+      img.data[i + 2] = Math.min(255, rgb[2] * latMul);
+      img.data[i + 3] = 255;
+    }
+  }
+
   g.putImageData(img, 0, 0);
   const t = tex(c);
   t.wrapS = THREE.RepeatWrapping;
