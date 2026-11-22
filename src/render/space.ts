@@ -385,9 +385,10 @@ void main() {
   vec3 n = normalize(vN);
   vec3 v = normalize(cameraPosition - vW);
   float ndv = abs(dot(n, v));
-  float rim = pow(1.0 - ndv, 3.6);
+  float rim = pow(1.0 - ndv, 2.5);
   float band = 0.88 + 0.12 * sin(vW.y * 0.25 + uTime * 1.4);
-  float a = clamp(rim * 0.18 * band, 0.0, 0.18);
+  // faint face sheen + bright fresnel rim so the shell reads as an energy envelope
+  float a = clamp(0.05 + rim * 0.30 * band, 0.0, 0.30);
   gl_FragColor = vec4(uCol, a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -1234,10 +1235,10 @@ function buildRingCity(p: PlanetDef): THREE.Group {
   const dimGold = new THREE.Color(0x78532c);
   const pickWinColor = (): THREE.Color | null => {
     const v = rnd();
-    if (v < 0.22) return null; // unlit window for realistic residential/commercial rhythm
-    if (v < 0.58) return warmWhite;
-    if (v < 0.84) return amber;
-    if (v < 0.94) return ivory;
+    if (v < 0.28) return null; // unlit window for realistic residential/commercial rhythm
+    if (v < 0.56) return warmWhite;
+    if (v < 0.82) return amber;
+    if (v < 0.92) return ivory;
     return dimGold;
   };
 
@@ -1296,8 +1297,10 @@ function buildRingCity(p: PlanetDef): THREE.Group {
   addWallBand(84, R * 1.303, [-R * 0.014, R * 0.014], true, R * 0.038, R * 0.013);
 
   const winGeo = new THREE.PlaneGeometry(1, 1);
+  // gain 1.35 (not >2): keeps warm-white lit but lets amber / dim-gold tiers read
+  // as distinct brightness levels instead of clipping into one white mass
   const winMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(2.05, 2.05, 2.05),
+    color: new THREE.Color(1.35, 1.35, 1.35),
     transparent: true,
     opacity: 1.0,
     side: THREE.DoubleSide,
