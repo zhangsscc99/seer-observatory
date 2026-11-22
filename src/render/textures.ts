@@ -95,8 +95,30 @@ export function floorTextures(R: number): { map: THREE.Texture; emissive: THREE.
   g.fillRect(0, 0, S, S);
   e.fillStyle = '#000';
   e.fillRect(0, 0, S, S);
-  r.fillStyle = '#5a5a5a'; // roughness ~0.35 (glossy tile)
-  r.fillRect(0, 0, S, S);
+  // low-frequency roughness variation across tiles (0.25..0.65) so floor shows worn/polished sheen contrast
+  const rImg = r.createImageData(S, S);
+  const nRough1 = makeNoise(19, 6);
+  const nRough2 = makeNoise(73, 14);
+  for (let y = 0; y < S; y++) {
+    const dy = (y - cy) / m;
+    for (let x = 0; x < S; x++) {
+      const dx = (x - cx) / m;
+      const dist = Math.hypot(dx, dy);
+      const u = (x / S) * 6;
+      const v = (y / S) * 6;
+      const lf = nRough1(u, v) * 0.7 + nRough2(u * 2.1, v * 2.1) * 0.3;
+      // subtle foot-traffic polish along the main circular walkway (r ≈ 2.6..3.6) and bow approach
+      const walkway = Math.exp(-Math.pow((dist - 3.05) / 0.75, 2)) * 0.14;
+      const roughVal = Math.max(0.25, Math.min(0.65, 0.27 + lf * 0.38 - walkway));
+      const byte = Math.round(roughVal * 255);
+      const idx = (y * S + x) * 4;
+      rImg.data[idx] = byte;
+      rImg.data[idx + 1] = byte;
+      rImg.data[idx + 2] = byte;
+      rImg.data[idx + 3] = 255;
+    }
+  }
+  r.putImageData(rImg, 0, 0);
 
   // alternating panel tint by ring band
   const bands: [number, number, string][] = [

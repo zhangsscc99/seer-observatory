@@ -2,7 +2,7 @@
 // out from the pure layout in src/game/cabin.ts (same numbers as collision).
 import * as THREE from 'three';
 import { CABIN, CONSOLES, polar, seatPositions } from '../game/cabin.ts';
-import { MAT, arc, glow } from './materials.ts';
+import { MAT, arc, createWindowGlassMaterial, glow } from './materials.ts';
 import { PAL } from './palette.ts';
 import { consoleScreenTexture, floorTextures, radialTexture } from './textures.ts';
 
@@ -51,7 +51,9 @@ function buildConsole(a0: number, a1: number, seed: number): THREE.Group {
     const d = a0 + (a1 - a0) * f;
     g.add(arc([[ri + 0.03, 0.44], [ri + 0.09, 0.5]], d - 0.7, d + 0.7, MAT.tealGlow, 1));
   }
-  // end caps
+  // end caps + brushed-alloy deck lip trim
+  g.add(arc([[ri + 0.16, 0.515], [ri + 0.19, 0.535]], a0 + 0.5, a1 - 0.5, MAT.metal));
+  g.add(arc([[ro - 0.27, 0.915], [ro - 0.05, 0.915], [ro, 0.865]], a0 + 0.5, a1 - 0.5, MAT.metal));
   const capGeo = new THREE.BoxGeometry(0.1, 0.98, ro - ri + 0.1);
   for (const a of [a0, a1]) {
     const cap = new THREE.Mesh(capGeo, MAT.hullShade);
@@ -85,6 +87,9 @@ function buildPedestal(): { group: THREE.Group; globe: THREE.Group; beam: THREE.
       0, 360, MAT.hull, 40,
     ),
   );
+  // metallic trim rings on pedestal collar & central platform bezel for crisp metal-vs-plastic contrast
+  g.add(arc([[0.905, 0.13], [0.905, 0.17], [0.57, 0.23], [0.57, 0.20]], 0, 360, MAT.metal, 40));
+  g.add(arc([[1.055, 0.69], [1.055, 0.72]], 0, 360, MAT.metalDark, 40));
   g.add(arc([[0.535, 0.28], [0.515, 0.44]], 0, 360, MAT.cyanGlow, 40));
   g.add(arc([[1.056, 0.72], [1.056, 0.78]], 0, 360, MAT.greenGlow, 40));
   const emitter = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.56, 0.05, 32), MAT.metalDark);
@@ -211,16 +216,14 @@ export function buildCabin(): CabinView {
     group.add(col, but, cap, strip);
   }
 
-  // glass: barely-there tint so the windows read as glazed
-  const glass = arc(
-    [[R + 0.2, 0.95], [R + 0.2, H - 0.65]], 38, 322,
-    new THREE.MeshBasicMaterial({
-      color: 0x7fd4ff, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    }),
-    48, true,
-  );
-  group.add(glass);
+  // panoramic glazing: MeshPhysicalMaterial + Fresnel edge & thickness reflection + alloy gaskets
+  const glassMat = createWindowGlassMaterial();
+  const glass = arc([[R + 0.2, 0.95], [R + 0.2, H - 0.65]], 38, 322, glassMat, 64, true);
+  // inner thick-pane edge reflection strips & metallic window gaskets at sill and header
+  const sillFrame = arc([[R + 0.12, 0.92], [R + 0.24, 0.96], [R + 0.24, 0.99], [R + 0.12, 0.95]], 38, 322, MAT.metalDark, 64);
+  const headFrame = arc([[R + 0.12, H - 0.62], [R + 0.24, H - 0.66], [R + 0.24, H - 0.69], [R + 0.12, H - 0.65]], 38, 322, MAT.metalDark, 64);
+  const outerBevel = arc([[R + 0.14, 0.94], [R + 0.14, 0.97]], 38, 322, MAT.metal, 64);
+  group.add(glass, sillFrame, headFrame, outerBevel);
 
   // ceiling ring with a big round skylight
   const ceil = new THREE.Mesh(new THREE.RingGeometry(CABIN.skylightR, R + 0.3, 96, 1), MAT.hull);
