@@ -167,3 +167,13 @@ npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measu
 | 12.3 | 结构细节与窗光层次：外环 36 组 instanced 散热鳍片/天线桅杆/服务舱（≤0.06R）；窗光三档 gain `1.9 / 1.35 / 0.7`（`setColorAt`，冷暖 7:3）；4 座塔根部机库口 + 暖光条 | `grep -n "detailSets\|towerHangarGeo\|1.9 : t < 0.68" src/render/space.ts` |
 | 12.4 | 观感实测与出图（2026-11-22，844×390）：cabin `121.71 / 0.022 / 230.01`、space `93.08 / 183.64`、ring `64.91 / 147.58`（M11 `61.5 / 139.7`）；竖屏 ring `64.66 / 156.80` | `node scripts/measure-look.mjs`；`ls e2e/shots/ring-*.png` |
 | 12.5 | 部署：`ci-deploy` → `DEPLOY OK`；本机与公网同哈希 `index-LQG4jeFw.js`，公网 200 | `curl -s https://openfolio.uk/seer/ \| grep -o 'index-[^"]*\.js'` |
+
+## M13 磁暴星域 magnetar（F1301–F1305）
+
+| # | 功能 | verify |
+| --- | --- | --- |
+| 13.1 | `PLANETS` 新增 `magnetar`（`磁暴星域 · 岚弧`，`(-720,-120,-1020)` r100，`kind: 'magnetar'`、`hazard: 'magnetic'`、seed 149，间距 > 半径和 + 100 且在 `SECTOR_RADIUS` 内）；`HAZARDS.magnetic`（`energyMul: 0.75`，`强磁暴场·回充 ×0.75`）；`scanResult('magnetar')` 返回「超导磁晶」与 ≥40 字专属观测日志；HUD `KIND_LABEL`/`HAZARD_LABEL` 映射 | `node --test --test-name-pattern="magnetar\|hazardEffect\|sector data" src/game/` |
+| 13.2 | 磁星渲染（零外部素材/零后处理）：`magnetarTextures()` 1024×512 PBR（map/emissive/rough，两层 Voronoi `14×7`/`42×21`）；`buildMagnetar()` 铁壳 PBR（metalness 0.62、emissiveIntensity 1.65）+ `onBeforeCompile` 裂隙磁涌与 ≥0.09 夜侧保底 + 16 条 `r=L·R·sin²θ` 偶极磁力线弧笼（core+sheath 2 draw call）+ 4 个极区足点等离子环 + `1.15R` additive 磁层 halo + 360 偶极壳尘粒 + 距离衰减定向轮廓光与局部点光 | `grep -n "magnetarTextures\|buildMagnetar\|MAGNETAR_QUAT\|magRimLight" src/render/textures.ts src/render/space.ts` |
+| 13.3 | 特写机位与 look-gate 出图项：`focusPlanet('magnetar')` 4.2R 侧斜 3/4 构图（磁赤道上方 18°、偏转 46°、微压机头 0.08 rad，横/竖屏 FOV `66°/104°`，弧笼全景与铁壳同框且盘面不被飞船遮挡）；`measure-look.mjs` 加入 `['magnetar', 'mag']` 与 `shots:` 提示行（阈值不变） | `grep -n "magnetar" src/main.ts scripts/measure-look.mjs && node --check scripts/measure-look.mjs` |
+| 13.4 | 类型检查、单测与生产构建：`npx tsc --noEmit` 0 错误、`node --test src/game/` 58 pass、`npm run build` 成功（`index-*.js` gzip 227.54 kB） | `npx tsc --noEmit && node --test src/game/ && npm run build` |
+| 13.5 | M13 交付文档同步：`docs/PLANETS.md` 候选池与 M13 交付清单、`docs/ART-SPEC.md` 磁暴星域材质/光照/磁力线规范、`FEATURES.md` M13 清单 | `grep -n "magnetar" docs/PLANETS.md docs/ART-SPEC.md FEATURES.md` |

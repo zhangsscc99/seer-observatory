@@ -19,6 +19,7 @@
 | `binary` | 双星系 | 冷白/暖橙两颗恒星 + 双色温照明 + 冷暖双半球行星与晨昏环带 | 双星光子场（`photon`，能量回充 ×1.3，青色警示）+ 扫描得「双星等离子」 | ✅ M9 上线（F901–F905） |
 | `blackhole` | 黑洞边缘 | 引力透镜光晕、吸积盘、时间膨胀提示 | 危险区：进入后 HUD 时钟加速、超出半径自动弹出 | ✅ M10 上线（F1001–F1005） |
 | `ring-city` | 环形城市 | 人造环、窗光密集、可停靠 | 停靠补给、情报商（解锁下一星球） | ✅ M11 上线（F1109–F1113） |
+| `magnetar` | 磁暴星域 · 岚弧 | 深靛铁壳 + 翡翠青绿磁震裂纹、16 条 r=L·R·sin²θ 偶极磁力线弧笼、极区足点等离子环、1.15R 磁层 halo 与 360 偶极壳尘粒 | 强磁暴场（`magnetic`，能量回充 ×0.75，青色警示）+ 扫描得「超导磁晶」 | ✅ M13 上线（F1301–F1305） |
 
 ## 已有星球（M2 铺设，M5 起可扫描）
 
@@ -40,7 +41,7 @@
 - [x] 档案：`localStorage['seer.archive']`（条目 + 资源计数），HUD 右上「档案」抽屉可查，坏 JSON 不抛错
 - [x] 星图台选择：舱内星图台开目标面板，选择写 `seer.target` → 目标行高亮 + 顶部目标文案 + 全息球配色 + 太空里目标星球下方青色标记环；
       危害真的生效（低温 → 推进能量回充 ×0.55，气流/辐射给警示条）
-- [x] 危害类型枚举：`cold` / `radiation` / `wind` / `gravity` / `photon` / `tidal`，HUD 顶部警示条（青/金，不用红色战斗色）
+- [x] 危害类型枚举：`cold` / `radiation` / `wind` / `gravity` / `photon` / `tidal` / `traffic` / `magnetic`，HUD 顶部警示条（青/金，不用红色战斗色）
 
 ## `ice-ring` 交付清单（M6，全绿）
 
@@ -82,6 +83,13 @@
 4. ✅ 实测（2026-11-22，844×390）：cabin `121.71 / darkFrac 0.022 / p95 230.01`、space `93.08 / p95 183.64`、ring `64.91 / p95 147.58`（M11 `61.5 / 139.7`）；竖屏 ring `64.66 / 156.80`、space `91.3 / 177.89`。截图 `e2e/shots/{cabin,space,ring}-{844x390,390x844}.png`。
 5. ✅ 部署：`bash scripts/ci-deploy.sh` → `DEPLOY OK`；本机与公网均为 `index-LQG4jeFw.js`，`https://openfolio.uk/seer/` 200（T8 之后首次本机=公网一致）。
 
-下一颗候选：待定（六颗候选星球全部上线，之后按画质走查清单 T3–T13 逐条推进）。
+## magnetar 交付清单（M13）
+
+1. ✅ 星球数据、危害与扫描链路（`6a19ce2`，F1301）：`PLANETS` 新增 `magnetar`（`磁暴星域 · 岚弧`，`(-720, -120, -1020)`，r100，距原点 `1254.3 ≤ SECTOR_RADIUS 1500`，与其余 10 星间距均 > 半径和 + 100，`hazard: 'magnetic'`，seed 149）；`HazardKind` 新增 `'magnetic'`（`energyMul: 0.75`，`强磁暴场·回充 ×0.75`）；`RESOURCE_BY_KIND/ID['magnetar'] = '超导磁晶'` 与 `scanResult('magnetar')` ≥40 字观测日志；HUD 标签映射（`KIND_LABEL['magnetar'] = '磁星域'`、`HAZARD_LABEL['magnetic'] = '强磁暴'`）；`src/game/{scan,space}.test.ts` 单测同步生成并全绿（58 pass）。
+2. ✅ 磁星 PBR 地壳、偶极弧笼与磁层渲染（`4780bc1`，F1302）：`src/render/textures.ts` `magnetarTextures()` 生成 1024×512 equirect `map` / `emissive` / `rough`（两层 Voronoi `14×7` + `42×21` 磁震裂纹与极区 8 节点足点环）；`src/render/space.ts` `buildMagnetar()` 实现铁壳 `MeshStandardMaterial` + `onBeforeCompile` 裂隙脉动与 ≥0.09 夜侧保底、16 条 `r = L·R·sin²θ` 偶极磁力线弧笼（core + 2.95× sheath 仅 2 draw call）、4 个极区足点等离子环、`1.15R` BackSide additive 磁层 halo、360 颗偶极壳带电尘粒，以及隔离在 `near` 组的距离衰减定向轮廓光与点光。
+3. ✅ 特写机位与 look-gate 出图项（`b8a8c59`，F1303）：`src/main.ts` `focusPlanet('magnetar')` 设为 `4.2R`、磁赤道上方 `18°`、朝太阳偏转 `46°`、机头微压 `0.08 rad`（横/竖屏 `focusFovV = 66° / 104°`，船位距原点 `992`），兼顾铁壳昼夜明暗交界与偶极磁力线弧笼全景入画，且星体盘面浮于飞船上方不被遮挡；`scripts/measure-look.mjs` 加入 `['magnetar', 'mag']` 出图项与 `shots:` 提示行（阈值不放宽）。
+4. ✅ 实测门禁数字（2026-11-22）：`npx tsc --noEmit` 0 错误；`node --check scripts/measure-look.mjs` 通过；`node --test src/game/` **58 pass / 0 fail**（较原有 57 pass +1）；`npm run build` 成功（33 modules，`dist/assets/index-Dt0v0C_I.js` **830.92 kB / gzip 227.54 kB**）。
+
+下一颗候选：待定（七颗特色星球全部上线，之后按画质走查清单 T3–T13 逐条推进）。
 
 进度标记：⏳ 进行中 · ✅ 已上线（带提交 hash）· 未开始
