@@ -19,7 +19,7 @@ import { buildRobot } from './render/robot.ts';
 import { buildShip } from './render/ship.ts';
 import { bakeSky, makeStars } from './render/sky.ts';
 import { RING_QUAT } from './render/rings.ts';
-import { BH_DISK_QUAT, buildSpace, RING_CITY_QUAT } from './render/space.ts';
+import { BH_DISK_QUAT, buildSpace, MAGNETAR_QUAT, RING_CITY_QUAT } from './render/space.ts';
 
 declare global {
   interface Window {
@@ -597,6 +597,23 @@ window.__seer = {
       dir.set(p.pos.x - midX, p.pos.y - midY, p.pos.z - midZ).normalize();
       dir.y += 0.06;
       dir.normalize();
+    } else if (p.kind === 'magnetar') {
+      // 4.2R 侧斜 3/4 构图（磁赤道上方 18°、朝太阳偏转 46° 并微压机头 0.08 rad）：
+      // 兼顾铁壳昼夜明暗交界与 L=1.74..2.60R 偶极磁力线弧笼全景入画，且让星体盘面浮于飞船轮廓上方不被挡死
+      dist = p.radius * 4.2;
+      const pole = new THREE.Vector3(0, 1, 0).applyQuaternion(MAGNETAR_QUAT).normalize();
+      const inward = new THREE.Vector3(-p.pos.x, -p.pos.y, -p.pos.z);
+      const inEq = inward.addScaledVector(pole, -inward.dot(pole)).normalize();
+      const tangent = new THREE.Vector3().crossVectors(pole, inEq).normalize();
+      if (tangent.dot(dir) < 0) tangent.negate();
+      const az = (46 * Math.PI) / 180;
+      const el = (18 * Math.PI) / 180;
+      dir.copy(inEq)
+        .multiplyScalar(Math.cos(az))
+        .addScaledVector(tangent, Math.sin(az))
+        .multiplyScalar(Math.cos(el))
+        .addScaledVector(pole, Math.sin(el))
+        .normalize();
     }
     ship.pos.x = p.pos.x + dir.x * dist;
     ship.pos.y = p.pos.y + dir.y * dist;
@@ -607,6 +624,7 @@ window.__seer = {
     const fl = Math.hypot(fx, fy, fz);
     ship.yaw = Math.atan2(-fx / fl, -fz / fl);
     ship.pitch = Math.asin(fy / fl);
+    if (p.kind === 'magnetar') ship.pitch -= 0.08;
     ship.roll = 0;
     ship.speed = SHIP.brakeSpeed;
     ship.energy = SHIP.energyMax;
@@ -616,6 +634,8 @@ window.__seer = {
       cam.focusFovV = aspect < 1 ? 82 : 64;
     } else if (p.kind === 'ring-city') {
       cam.focusFovV = aspect < 1 ? 88 : 66;
+    } else if (p.kind === 'magnetar') {
+      cam.focusFovV = aspect < 1 ? 104 : 66;
     } else if (p.kind === 'binary') {
       // angular-separation / FOV check: ensure both stars stay inside the frame with margin on landscape & portrait
       const portrait = aspect < 1;

@@ -252,7 +252,7 @@ async function runViewport(w, h, gate, errors) {
     const spacePass = report(`space ${tag}${gate ? '' : ' (info)'}`, space, THRESH.space, gate);
     if (gate && !spacePass) viewOk = false;
 
-    // planet close-ups (info-only): icer 3/4 ring view + gas-storm + red-giant + binary + blackhole + ring-city
+    // planet close-ups (info-only): icer 3/4 ring view + gas-storm + red-giant + binary + blackhole + ring-city + magnetar
     for (const [id, shotName] of [
       ['icer', 'icer'],
       ['gas-storm', 'gas'],
@@ -260,6 +260,7 @@ async function runViewport(w, h, gate, errors) {
       ['binary', 'binary'],
       ['blackhole', 'black'],
       ['ring-city', 'ring'],
+      ['magnetar', 'mag'],
     ]) {
       try {
         const focused = await page.evaluate((pid) => window.__seer.focusPlanet(pid), id);
@@ -303,7 +304,7 @@ if (errors.length) {
   ok = false;
   console.log(`FAIL  js errors:\n${errors.join('\n')}`);
 }
-console.log(`shots: ${path.relative(ROOT, SHOTS)}/{cabin,space,gas,icer,red,binary,black,ring}-{844x390,390x844}.png`);
+console.log(`shots: ${path.relative(ROOT, SHOTS)}/{cabin,space,gas,icer,red,binary,black,ring,mag}-{844x390,390x844}.png`);
 console.log(ok ? 'LOOK OK' : 'LOOK FAILED');
 cleanup();
 process.exit(ok ? 0 : 1);
