@@ -1128,17 +1128,17 @@ function buildRingCity(p: PlanetDef): THREE.Group {
   const hullTex = ringCityHullTexture(p.seed);
   const hullMat = new THREE.MeshStandardMaterial({
     map: hullTex,
-    color: 0x8297b2,
-    metalness: 0.85,
+    color: 0x8ea6c4,
+    metalness: 0.65,
     roughness: 0.35,
-    envMapIntensity: 1.75,
+    envMapIntensity: 1.55,
     side: THREE.DoubleSide,
   });
   const trimMat = new THREE.MeshStandardMaterial({
-    color: 0x3b4d64,
-    metalness: 0.86,
-    roughness: 0.33,
-    envMapIntensity: 1.6,
+    color: 0x4e6480,
+    metalness: 0.68,
+    roughness: 0.35,
+    envMapIntensity: 1.45,
     side: THREE.DoubleSide,
   });
   const coreMat = new THREE.MeshStandardMaterial({
@@ -1562,9 +1562,94 @@ function buildRingCity(p: PlanetDef): THREE.Group {
   const shield = new THREE.Mesh(new THREE.SphereGeometry(R * 1.04, 48, 32), shieldMat);
   g.add(shield);
 
+  // 8) Sun-facing outer rim/fresnel bright edge (1.755R, width ~0.02R, additive, instanced)
+  const centerVec = new THREE.Vector3(p.pos.x, p.pos.y, p.pos.z);
+  const rimGeo = new THREE.TorusGeometry(R * 1.755, R * 0.011, 10, 128);
+  rimGeo.rotateX(Math.PI / 2);
+  const rimColor = new THREE.Color(PAL.cyan).lerp(new THREE.Color(0xffffff), 0.45).multiplyScalar(1.55);
+  const rimMat = new THREE.MeshBasicMaterial({
+    color: rimColor,
+    transparent: true,
+    opacity: 0.92,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  rimMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uSun = { value: sunDir };
+    shader.uniforms.uCenter = { value: centerVec };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vRimWPos;\nvarying vec3 vRimWNorm;')
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        vec4 rimLoc = vec4( transformed, 1.0 );
+        vec3 rimNLoc = normal;
+        #ifdef USE_INSTANCING
+          rimLoc = instanceMatrix * rimLoc;
+          rimNLoc = mat3( instanceMatrix ) * rimNLoc;
+        #endif
+        vRimWPos = ( modelMatrix * rimLoc ).xyz;
+        vRimWNorm = normalize( mat3( modelMatrix ) * rimNLoc );`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform vec3 uSun;\nuniform vec3 uCenter;\nvarying vec3 vRimWPos;\nvarying vec3 vRimWNorm;')
+      .replace(
+        'vec4 diffuseColor = vec4( diffuse, opacity );',
+        `vec3 rimRad = normalize( vRimWPos - uCenter );
+        float sunSide = smoothstep( -0.20, 0.42, dot( rimRad, uSun ) );
+        float sunWeight = mix( 0.10, 1.0, sunSide );
+        vec3 rimView = normalize( cameraPosition - vRimWPos );
+        float rimFres = 0.50 + 0.50 * pow( 1.0 - abs( dot( normalize( vRimWNorm ), rimView ) ), 1.3 );
+        float rimGain = sunWeight * rimFres;
+        vec4 diffuseColor = vec4( diffuse, opacity * rimGain );`,
+      );
+  };
+  const rimMesh = new THREE.InstancedMesh(rimGeo, rimMat, 1);
+  q.identity();
+  scV.set(1, 1, 1);
+  m.compose(posV.set(0, 0, 0), q, scV);
+  rimMesh.setMatrixAt(0, m);
+  rimMesh.instanceMatrix.needsUpdate = true;
+  tilt.add(rimMesh);
+
+  // 9) Upper & lower warm additive city haze planes (alpha <= 0.10, outerR ~2.0R, radial exp decay)
+  const hazeGeo = polarRingGeometry(R * 1.05, R * 2.02, 96, 10);
+  const hazeMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0xffbe74),
+    transparent: true,
+    opacity: 0.085,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  hazeMat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vHazeUv;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvHazeUv = uv;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vHazeUv;')
+      .replace(
+        'vec4 diffuseColor = vec4( diffuse, opacity );',
+        `float rR = mix( 1.05, 2.02, vHazeUv.y );
+        float outFade = exp( -max( 0.0, rR - 1.65 ) * 6.0 ) * smoothstep( 2.02, 1.88, rR );
+        float inFade = exp( -max( 0.0, 1.65 - rR ) * 3.8 ) * smoothstep( 1.05, 1.22, rR );
+        float hMask = ( rR >= 1.65 ? outFade : inFade );
+        vec3 warmGrad = mix( diffuse * vec3( 1.06, 0.96, 0.86 ), diffuse * vec3( 1.0, 0.72, 0.48 ), clamp( ( rR - 1.65 ) / 0.37, 0.0, 1.0 ) );
+        vec4 diffuseColor = vec4( warmGrad, min( 0.10, opacity * hMask ) );`,
+      );
+  };
+  const hazeMesh = new THREE.InstancedMesh(hazeGeo, hazeMat, 2);
+  m.compose(posV.set(0, mainH * 1.35, 0), q, scV);
+  hazeMesh.setMatrixAt(0, m);
+  m.compose(posV.set(0, -mainH * 1.35, 0), q, scV);
+  hazeMesh.setMatrixAt(1, m);
+  hazeMesh.instanceMatrix.needsUpdate = true;
+  tilt.add(hazeMesh);
+
   g.userData.timeMats = [shieldMat];
   g.userData.ringCity = {
-    center: new THREE.Vector3(p.pos.x, p.pos.y, p.pos.z),
+    center: centerVec,
     winMat,
     coreWinMat,
     navMat,
@@ -1983,7 +2068,8 @@ export function buildSpace(): SpaceView {
     near.add(starLight);
   }
 
-  // local weak warm-white PointLight on ring-city (intensity <= 0.8, near-only so cabin is never polluted)
+  // local weak warm-white PointLight + cool-white key DirectionalLight on ring-city
+  // (both in `near` and distance-attenuated so cabin & distant planets are never polluted)
   const ringCityPlanet = PLANETS.find((p) => p.kind === 'ring-city');
   const ringCityCenter = ringCityPlanet
     ? new THREE.Vector3(ringCityPlanet.pos.x, ringCityPlanet.pos.y, ringCityPlanet.pos.z)
@@ -1994,6 +2080,19 @@ export function buildSpace(): SpaceView {
   if (ringCityLight && ringCityPlanet) {
     ringCityLight.position.set(ringCityPlanet.pos.x, ringCityPlanet.pos.y + ringCityPlanet.radius * 0.25, ringCityPlanet.pos.z);
     near.add(ringCityLight);
+  }
+  const ringCityKeyDir = new THREE.Vector3()
+    .crossVectors(sunDir, new THREE.Vector3(0, 1, 0))
+    .normalize()
+    .applyAxisAngle(new THREE.Vector3(0, 1, 0), (-22 * Math.PI) / 180)
+    .add(new THREE.Vector3(0, 0.22, 0))
+    .normalize();
+  const ringCityKeyLight = ringCityPlanet ? new THREE.DirectionalLight(0xdceeff, 0) : null;
+  if (ringCityKeyLight && ringCityCenter) {
+    ringCityKeyLight.position.copy(ringCityCenter).addScaledVector(ringCityKeyDir, 300);
+    ringCityKeyLight.target.position.copy(ringCityCenter);
+    ringCityKeyLight.target.updateMatrixWorld();
+    near.add(ringCityKeyLight, ringCityKeyLight.target);
   }
 
   // local accretion-disk warm-white & cool-violet PointLights + directional rim light for blackhole
@@ -2144,11 +2243,16 @@ export function buildSpace(): SpaceView {
         sunLight.position.copy(baseSunPos).lerp(binaryCoolPos, w);
       }
       if (ringCityCenter && ringCityLight && ringCityPlanet) {
-        // enable weak warm-white point light (<= 0.8) only when ship is near the ring city
+        // enable local warm point light (<= 0.8) + cool-white key light (1.6) only near ring-city
         const dRc = shipPos.distanceTo(ringCityCenter);
         const u = Math.max(0, Math.min(1, (dRc - ringCityPlanet.radius * 3.8) / (ringCityPlanet.radius * 2.0)));
         const w = 1 - u * u * (3 - 2 * u);
         ringCityLight.intensity = 0.78 * w;
+        if (ringCityKeyLight) {
+          const uk = Math.max(0, Math.min(1, (dRc - ringCityPlanet.radius * 3.5) / (ringCityPlanet.radius * 1.5)));
+          const wk = 1 - uk * uk * (3 - 2 * uk);
+          ringCityKeyLight.intensity = 1.6 * wk;
+        }
       }
       if (bhCenter && bhPlanet) {
         // smooth distance-attenuated rim key light from the accretion disk onto the ship's BH-facing hull

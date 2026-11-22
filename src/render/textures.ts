@@ -999,7 +999,7 @@ export function ringCityHullTexture(seed = 131): THREE.Texture {
   const rnd = mulberry32(seed + 11);
 
   // dark slate-steel base (bright enough to catch directional + PMREM metallic sheen)
-  g.fillStyle = '#3a4a60';
+  g.fillStyle = '#44556d';
   g.fillRect(0, 0, W, H);
 
   // ordered architectural hull plates (no organic clouds)
@@ -1009,17 +1009,19 @@ export function ringCityHullTexture(seed = 131): THREE.Texture {
   const ph = H / rows;
   for (let r = 0; r < rows; r++) {
     for (let k = 0; k < cols; k++) {
-      const shade = 48 + Math.floor(rnd() * 28);
-      g.fillStyle = `rgb(${shade}, ${shade + 12}, ${shade + 26})`;
+      const shade = 62 + Math.floor(rnd() * 36);
+      g.fillStyle = `rgb(${shade}, ${shade + 13}, ${shade + 28})`;
       g.fillRect(k * pw + 1, r * ph + 1, pw - 2, ph - 2);
       // subtle inner structural recess on alternating plates
       if ((r + k) % 3 === 0) {
-        g.fillStyle = 'rgba(14, 20, 32, 0.35)';
+        g.fillStyle = 'rgba(14, 20, 32, 0.34)';
         g.fillRect(k * pw + 4, r * ph + 5, pw - 8, ph - 10);
       }
-      // crisp metallic highlight bevel along top edge
-      g.fillStyle = 'rgba(195, 222, 248, 0.24)';
+      // crisp metallic highlight bevel along top & left seam edges
+      g.fillStyle = 'rgba(220, 238, 255, 0.38)';
       g.fillRect(k * pw + 1, r * ph + 1, pw - 2, 1.5);
+      g.fillStyle = 'rgba(195, 222, 248, 0.20)';
+      g.fillRect(k * pw + 1, r * ph + 1, 1.2, ph - 2);
     }
   }
 
