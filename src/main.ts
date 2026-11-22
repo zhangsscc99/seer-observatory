@@ -18,7 +18,7 @@ import { buildRobot } from './render/robot.ts';
 import { buildShip } from './render/ship.ts';
 import { bakeSky, makeStars } from './render/sky.ts';
 import { RING_QUAT } from './render/rings.ts';
-import { BH_DISK_QUAT, buildSpace } from './render/space.ts';
+import { BH_DISK_QUAT, buildSpace, RING_CITY_QUAT } from './render/space.ts';
 
 declare global {
   interface Window {
@@ -537,6 +537,21 @@ window.__seer = {
       dir.copy(localView).applyQuaternion(BH_DISK_QUAT).normalize();
       tidalField.reset();
       tidalFlash = 0;
+    } else if (p.kind === 'ring-city') {
+      // 3.0R hero view ~23° above the tilted ring plane, offset from anti-sun so sunlit metallic bevels,
+      // elliptical double rings, all 4 docking towers, and dense warm window grid all read clearly
+      dist = p.radius * 3.0;
+      const n = new THREE.Vector3(0, 1, 0).applyQuaternion(RING_CITY_QUAT).normalize();
+      const sunProj = dir.clone().addScaledVector(n, -dir.dot(n)).normalize();
+      const tangent = new THREE.Vector3().crossVectors(n, sunProj).normalize();
+      const az = (46 * Math.PI) / 180;
+      const el = (23 * Math.PI) / 180;
+      dir.copy(sunProj)
+        .multiplyScalar(Math.cos(az))
+        .addScaledVector(tangent, Math.sin(az))
+        .multiplyScalar(Math.cos(el))
+        .addScaledVector(n, Math.sin(el))
+        .normalize();
     } else if (p.kind === 'binary') {
       // 3.3R outer-side framing (away from twin-star midpoint, slight +Y lift) so both star discs + planet fit cleanly
       dist = p.radius * 3.3;
@@ -565,6 +580,8 @@ window.__seer = {
     cam.shipPitch = ship.pitch;
     if (p.kind === 'blackhole') {
       cam.focusFovV = aspect < 1 ? 82 : 64;
+    } else if (p.kind === 'ring-city') {
+      cam.focusFovV = aspect < 1 ? 88 : 66;
     } else if (p.kind === 'binary') {
       // angular-separation / FOV check: ensure both stars stay inside the frame with margin on landscape & portrait
       const portrait = aspect < 1;

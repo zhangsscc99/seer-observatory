@@ -129,6 +129,39 @@ await page.keyboard.up('KeyD');
 assert.ok(s1.e < 100 && s1.yaw < -0.05 && Number(s1.txt) > 90);
 step(`boost ${v0.toFixed(0)} → >100, energy ${s1.e.toFixed(0)}%, turned right, HUD speed ${s1.txt}`);
 
+// A5: portrait 390x844 ring-city traffic warn bar must be cyan and never overlap top HUD buttons
+await page.setViewportSize({ width: 390, height: 844 });
+assert.equal(await S(() => window.__seer.focusPlanet('ring-city')), true);
+await until(() => !document.getElementById('warn').classList.contains('hidden'), 'ring-city traffic warn visible');
+const warnCheck = await S(() => {
+  const wEl = document.getElementById('warn');
+  const wRect = wEl.getBoundingClientRect();
+  const btns = ['archBtn', 'dock', 'mute'].map((id) => {
+    const r = document.getElementById(id).getBoundingClientRect();
+    return { id, left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
+  });
+  return {
+    text: wEl.textContent,
+    cyan: wEl.classList.contains('cyan'),
+    rect: { left: wRect.left, right: wRect.right, top: wRect.top, bottom: wRect.bottom },
+    btns,
+  };
+});
+assert.equal(warnCheck.cyan, true, 'ring-city warn bar is cyan');
+assert.match(warnCheck.text, /环城航道/);
+for (const b of warnCheck.btns) {
+  assert.ok(b.height >= 48 && b.width >= 48, `${b.id} >= 48px`);
+  const sep =
+    warnCheck.rect.right <= b.left ||
+    b.right <= warnCheck.rect.left ||
+    warnCheck.rect.bottom <= b.top ||
+    b.bottom <= warnCheck.rect.top;
+  assert.ok(sep, `portrait warn overlaps ${b.id}`);
+}
+await page.setViewportSize({ width: 844, height: 390 });
+await page.waitForTimeout(100);
+step('portrait 390x844 ring-city cyan warn bar does not overlap top buttons');
+
 await tap('dock');
 await until(() => window.__seer.mode.mode === 'cabin', 'dock');
 assert.equal(await S(() => document.getElementById('flight').classList.contains('hidden')), true);
