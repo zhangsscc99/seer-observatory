@@ -17,7 +17,7 @@
 | `red-giant` | 红巨星系 | 橙红主星占满天空、强辐射警示、尘埃幕 | 辐射累积需要躲进阴影区冷却；恒星光压让航行漂移 | ✅ M8 上线（F801–F804） |
 | `gas-storm` | 气态巨行星 | 条纹云带 + 风暴眼、悬浮采集站 | 强引力警示（`gravity`，能量回充 ×0.8）+ 扫描得「风暴氦芯」+ 悬浮采集站作目视地标 | ✅ M7 上线（F701–F705，`7f169b1`） |
 | `binary` | 双星系 | 冷白/暖橙两颗恒星 + 双色温照明 + 冷暖双半球行星与晨昏环带 | 双星光子场（`photon`，能量回充 ×1.3，青色警示）+ 扫描得「双星等离子」 | ✅ M9 上线（F901–F905） |
-| `blackhole` | 黑洞边缘 | 引力透镜光晕、吸积盘、时间膨胀提示 | 危险区：进入后 HUD 时钟加速、超出半径自动弹出 | 未开始 |
+| `blackhole` | 黑洞边缘 | 引力透镜光晕、吸积盘、时间膨胀提示 | 危险区：进入后 HUD 时钟加速、超出半径自动弹出 | ✅ M10 上线（F1001–F1005） |
 | `ring-city` | 环形城市 | 人造环、窗光密集、可停靠 | 停靠补给、情报商（解锁下一星球） | 未开始 |
 
 ## 已有星球（M2 铺设，M5 起可扫描）
@@ -40,7 +40,7 @@
 - [x] 档案：`localStorage['seer.archive']`（条目 + 资源计数），HUD 右上「档案」抽屉可查，坏 JSON 不抛错
 - [x] 星图台选择：舱内星图台开目标面板，选择写 `seer.target` → 目标行高亮 + 顶部目标文案 + 全息球配色 + 太空里目标星球下方青色标记环；
       危害真的生效（低温 → 推进能量回充 ×0.55，气流/辐射给警示条）
-- [x] 危害类型枚举：`cold` / `radiation` / `wind` / `gravity` / `photon`，HUD 顶部警示条（青/金，不用红色战斗色）
+- [x] 危害类型枚举：`cold` / `radiation` / `wind` / `gravity` / `photon` / `tidal`，HUD 顶部警示条（青/金，不用红色战斗色）
 
 ## `ice-ring` 交付清单（M6，全绿）
 
@@ -58,6 +58,14 @@
 4. ✅ `focusPlanet('binary')`（3.15R、偏离反日方向，暖橙伴星与双色明暗行星同框）+ `measure-look.mjs` 产出 `binary-{844x390,390x844}.png`（阈值不动）—— `c3f7411`
 5. ✅ 走查待办 T1/T2：竖屏 390×844 顶部 `#archBtn` / `#dock` / `#mute` 触控高度 50px ≥ 48px 且互不重叠（`e2e/smoke.mjs` 断言覆盖）；`measure-look.mjs` 竖屏 info-only 行只打印 `info` —— `66dcb7d`
 
-下一颗候选：`blackhole`（黑洞边缘，引力透镜光晕 + 吸积盘 + 时间膨胀提示）或优先修复 FEATURES T3–T6（gas-storm / red-giant 观感打磨）。
+## `blackhole` 交付清单（M10）
+
+1. ✅ 星球与危害定义（`src/game/space.ts`、`src/game/scan.ts`）：新增 `blackhole`（黑洞边缘，代号「弥夜」，`kind: 'blackhole'`、`hazard: 'tidal'`，能量回充 ×0.7，青色警示）；`TARGETS` 自动包含，完整接入扫描进度与 `seer.archive` 档案。
+2. ✅ 潮汐力场纯逻辑与单测（`src/game/tidal.ts`、`src/game/tidal.test.ts`）：`tidalState(distance, radius)` 分三段——`safe` / `hazard`（1.6R–3.2R，时间膨胀 `timeScale` 1.2→2.4）/ `crush`（<1.6R）；crush 区间累积潮汐张量触发 `ejected` 自动弹开与冷却；`computeEjectTarget` 沿径向推至 `ejectFactor * radius`；全量单测 47 pass。
+3. ✅ 黑洞视觉渲染（`src/render/space.ts`、`src/render/textures.ts`）：事件视界纯黑球 + 光子环（1.02–1.06R，朝视向一侧更亮）+ 倾斜吸积盘（1.35R–3.4R，canvas 程序化径向细条带/对数螺旋丝/湍流噪声，内圈快转、additive、多普勒按视线调制亮度与蓝白偏移）+ 引力透镜弧（1.15R–1.6R，扭曲 UV 采样星空/星云，additive 低强度）+ 尘埃幕壳与 ≥300 instanced 逆光尘粒 + 局部 `PointLight`（仅用 `onBeforeCompile`/材质，无后处理框架）。
+4. ✅ HUD 与反馈（`src/render/hud.ts`、`src/main.ts`）：顶部青色 `潮汐力场·回充 ×0.7` 警示条；飞行面板实时显示「本地时间 ×1.4」类时间膨胀数字；crush 自动弹开时给出一次性视觉反馈。
+5. ✅ 观感门槛与特写实测（`scripts/measure-look.mjs`，2026-11-22，844×390）：cabin `mean 126.17 / darkFrac 0.01 / p95 196.30`、space `mean 92.37 / p95 177.89`；特写 info：icer `91.2/178.2`、gas `77.8/199.4`、red `87.9/217.1`、binary `91.7/174.2`、**black `107.3/250.0`**；竖屏 cabin info `mean 140.96`。
+
+下一颗候选：`ring-city`（环形城市，人造环 + 密集窗光 + 停靠补给/情报商）。
 
 进度标记：⏳ 进行中 · ✅ 已上线（带提交 hash）· 未开始

@@ -120,6 +120,16 @@ npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measu
 | 9.5 | 走查待办 T1/T2：竖屏 390×844 顶部 `#archBtn` / `#dock` / `#mute` 高度 ≥48px 且不重叠（`smoke.mjs` 断言）；`measure-look.mjs` 竖屏 info-only 行只打印 `info` | `node e2e/smoke.mjs` → `SMOKE OK`；`grep -n "info  " scripts/measure-look.mjs` |
 | 9.6 | F906 双星特写可读性：`focusPlanet('binary')` 改至背向两星中点 `3.3R` + 两星张角/FOV 检查（横竖屏两星同框）；主星 `1.12R` / 伴星 `0.86R` 强化白热核心 + 径向日冕/耀斑对比（盘面均 ≥18px）；行星晨昏带两侧各加 3 条异速细卷云带 + 柔化双色 halo（夜侧 ≥0.05） | `npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measure-look.mjs` → `LOOK OK`；看 `e2e/shots/binary-{844x390,390x844}.png` |
 
+## M10 黑洞边缘 blackhole（F1001–F1005）
+
+| # | 功能 | verify |
+| --- | --- | --- |
+| 10.1 | PLANETS 新增 `blackhole`（黑洞边缘，代号「弥夜」，`kind: 'blackhole'`、`hazard: 'tidal'` 回充 ×0.7 青色警示），`TARGETS` 自动包含，扫描产出专属资源与观测日志 | `node --test --test-name-pattern="blackhole\|tidal" src/game/` |
+| 10.2 | 潮汐力场纯逻辑（`src/game/tidal.ts` + `src/game/tidal.test.ts`）：`tidalState(distance, radius)` 分 `safe` / `hazard`（1.6R–3.2R，`timeScale` 1.2→2.4）/ `crush`（<1.6R）；crush 累积潮汐张量触发 `ejected` 自动弹开 + 冷却；`computeEjectTarget` 沿径向推至 `ejectFactor * radius`（全量单测 47 pass） | `node --test --test-name-pattern="blackhole\|tidal" src/game/` |
+| 10.3 | 黑洞视觉渲染（纯 `onBeforeCompile`/材质，无后处理框架）：事件视界纯黑球 + 光子环（1.02–1.06R，朝视向更亮）+ 倾斜吸积盘（1.35R–3.4R，canvas 径向细条带/对数螺旋丝/湍流噪声，内圈快转、additive、多普勒按视线调制一侧更亮更蓝白）+ 引力透镜弧（1.15R–1.6R，扭曲 UV 采样星空/星云，additive 低强度）+ 尘埃幕壳与 ≥300 instanced 逆光尘粒 + 局部 `PointLight` | `grep -n "buildBlackhole" src/render/space.ts` |
+| 10.4 | HUD 与潮汐反馈：顶部青色 `潮汐力场·回充 ×0.7` 警示条；飞行面板显示「本地时间 ×1.4」类时间膨胀读数；crush 自动弹开一次性视觉反馈 | `grep -n "潮汐力场\|本地时间\|tidal" src/render/hud.ts src/main.ts` |
+| 10.5 | 观感门槛与特写出图：`black-{844x390,390x844}.png`（实测 844×390：cabin 126.17/0.01/196.30、space 92.37/177.89、black 107.3/250.0；竖屏 cabin 140.96） | `node scripts/measure-look.mjs` → `LOOK OK`；`ls e2e/shots/black-*.png` |
+
 ## 已知待办（M8 走查后，下一轮优先）
 
 | # | 问题 | 证据 | 验收 |
@@ -132,3 +142,5 @@ npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measu
 | T6 | 日珥弧/尘埃幕在这个机位几乎看不见（只有 halo 发光），临边昏暗中被 halo 复亮，飞船受光偏平 | 同上 | 特写里能数出 ≥2 条日珥弧伸出边缘；尘幕在 2.6R 壳上可见逆光颗粒；飞船朝星面一侧与背面的亮度比 ≥1.8 |
 | T7 | binary 特写里第二颗恒星仍被读成「灰色小行星/卫星」，两星色温对比不足（只有一颗有明显星芒） | `e2e/shots/binary-844x390.png`（M9 F906 后） | 两星都读作光球（白热核心 + 径向日冕），冷白/暖橙一眼可分；每颗盘面 ≥ 屏高 12% |
 | T8 | **发布链路断点**：`https://openfolio.uk/seer/` 实际由 103.146.124.206 上的旧副本（`7878060`，dist 2026-11-20）提供，本机 198.44.34.68 的 `ci-deploy.sh` 只更新本机 3029，公网仍是 M4/M6 时代构建；Cloudflare 侧无 API token、103 上无 root/write | `curl -s https://openfolio.uk/seer/ \| grep -o 'index-[^"]*\.js'` ≠ 本机 `dist/` 哈希 | 把 CF 源站指到本机（或给 103 同步权限）；公网 asset 哈希 == 本机最新构建哈希，`curl` 公网 200 且能在星图里选到 `binary` |
+| T9 | 黑洞特写吸积盘仍偏「正面漩涡」，倾斜透视与事件视界对盘面的前后遮挡不够；光子环偏柔光描边，缺少锐利细环 | `e2e/shots/black-844x390.png`（M10 走查） | 特写机位呈明显斜视角（盘面投影纵横比 ≤ 0.45），视界清晰遮挡盘面后半段且前景盘面跨过视界前缘；光子环在 1.02–1.06R 呈现锐利白热细环（环宽 ≤ 屏高 1.2%，峰值对比明显高于柔光晕） |
+| T10 | 飞船在黑洞侧仍是剪影（缺吸积盘溢光/轮廓光）；背景星空在黑洞外缘没有被引力透镜弯曲的实感 | `e2e/shots/black-844x390.png`（M10 走查） | 飞船朝向吸积盘一侧具清晰暖白/橙色轮廓光与受光面（明暗面亮度比 ≥ 1.6，不再纯黑剪影）；黑洞外缘 1.15R–1.8R 区域的背景星点/星云有可辨识的切向拉伸或爱因斯坦弧弯曲感，且 `measure-look` 阈值不退化 |
