@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { Sfx } from './audio/sfx.ts';
 import { ARCHIVE_KEY, addScan, emptyArchive, parseArchive, serializeArchive } from './game/archive.ts';
 import { buildCabinWorld, CABIN, nearPedestal } from './game/cabin.ts';
+import { Docker } from './game/dock.ts';
 import { ModeMachine, type Playable } from './game/mode.ts';
 import { clamp, damp } from './game/rng.ts';
 import { Robot } from './game/robot.ts';
@@ -63,8 +64,10 @@ const sfx = new Sfx();
 const controls = new Controls(canvas);
 let started = false;
 const scanner = new Scanner();
+const docker = new Docker();
 const tidalField = new TidalField();
 const blackholePlanet = planetById('blackhole');
+const ringCityPlanet = planetById('ring-city');
 let tidalFlash = 0;
 let archive = emptyArchive();
 let targetId: string | null = null;
@@ -429,6 +432,34 @@ function updateSpace(dt: number, active: boolean): void {
           : null;
   hud.setWarn(warnText, warnHazard ?? null);
 
+  // ring-city docking: hold within 1.7R at ≤25 km/s for 2.5 s → resupply
+  // (energy refill + 环城通行密钥 into the archive); 60 s cooldown between rewards
+  if (ringCityPlanet) {
+    const dRc = Math.hypot(
+      ship.pos.x - ringCityPlanet.pos.x,
+      ship.pos.y - ringCityPlanet.pos.y,
+      ship.pos.z - ringCityPlanet.pos.z,
+    );
+    for (const ev of docker.update(dt, dRc, ringCityPlanet.radius, ship.speed)) {
+      if (ev.type !== 'docked') continue;
+      ship.energy = SHIP.energyMax;
+      archive = addScan(
+        archive,
+        { id: ringCityPlanet.id, name: ringCityPlanet.name, resource: ev.resource, amount: ev.amount },
+        Date.now(),
+      );
+      try {
+        localStorage.setItem(ARCHIVE_KEY, serializeArchive(archive));
+      } catch {
+        /* private mode */
+      }
+      hud.setArchive(archive);
+      hud.showScanCard(ringCityPlanet.name, ev.resource, ev.amount, ev.log);
+      sfx.play('confirm');
+    }
+    hud.setDock(docker.state, docker.progress, docker.cooldown);
+  }
+
   const events = scanner.update(dt, near, active && controls.act);
   for (const ev of events) {
     if (ev.type !== 'complete') continue;
@@ -478,6 +509,7 @@ window.__seer = {
   sfx,
   space,
   scanner,
+  docker,
   get ship() {
     return ship;
   },

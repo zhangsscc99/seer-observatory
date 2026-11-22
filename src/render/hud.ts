@@ -1,5 +1,6 @@
 // Minimal DOM HUD. Markup + CSS live in index.html; this wires behaviour.
 import type { Archive } from '../game/archive.ts';
+import type { DockState } from '../game/dock.ts';
 import type { Playable } from '../game/mode.ts';
 import type { HazardKind } from '../game/scan.ts';
 import type { PlanetDef } from '../game/space.ts';
@@ -62,6 +63,10 @@ export class Hud {
   private scanName = $('scanName');
   private scanPct = $('scanPct');
   private scanBar = $('scanBarFill');
+  private dockProg = $('dockProg');
+  private dockLabel = $('dockLabel');
+  private dockPctEl = $('dockPct');
+  private dockBar = $('dockBarFill');
   private warn = $('warn');
   private card = $('card');
   private cardName = $('cardName');
@@ -143,6 +148,7 @@ export class Hud {
       this.setInteract(false);
       this.closePanels();
     }
+    if (!space) this.dockProg.classList.add('hidden');
   }
 
   setInteract(show: boolean): void {
@@ -312,6 +318,24 @@ export class Hud {
     this.scanPct.textContent = `${Math.round(p * 100)}%`;
     this.scanBar.style.transform = `scaleX(${p.toFixed(3)})`;
     this.scan.classList.toggle('done', done);
+  }
+
+  /** ring-city resupply bar: same visual language as the scan bar — percent
+   *  fill while approaching / holding, "已停靠" state when the reward lands */
+  setDock(state: DockState | null, progress: number, cooldown: number): void {
+    const show = state !== null && state !== 'far';
+    this.dockProg.classList.toggle('hidden', !show);
+    if (!show) return;
+    const p = Math.max(0, Math.min(1, progress));
+    const docked = state === 'docked';
+    this.dockLabel.textContent = docked
+      ? '已停靠 · 能量已补满'
+      : state === 'hold' && cooldown > 0
+        ? `停靠补给 · 冷却 ${Math.ceil(cooldown)}s`
+        : '停靠补给';
+    this.dockPctEl.textContent = `${Math.round(p * 100)}%`;
+    this.dockBar.style.transform = `scaleX(${p.toFixed(3)})`;
+    this.dockProg.classList.toggle('done', docked);
   }
 
   showScanCard(name: string, resource: string, amount: number, log: string): void {

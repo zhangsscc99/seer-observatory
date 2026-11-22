@@ -84,18 +84,19 @@
       }
       #warn.cyan { color: #d9fbff; border: 1px solid rgba(56, 225, 255, 0.85); box-shadow: 0 0 18px rgba(56, 225, 255, 0.35); }
       #warn.gold { color: #fff4cf; border: 1px solid rgba(255, 204, 92, 0.9); box-shadow: 0 0 18px rgba(255, 204, 92, 0.3); }
-      #scan {
+      #scan, #dockProg {
         left: 50%; transform: translateX(-50%); bottom: calc(94px + var(--sb)); z-index: 7;
         width: min(84vw, 330px); padding: 10px 14px; border-radius: 12px; background: var(--glass);
         border: 1px solid rgba(56, 225, 255, 0.55); font-size: 13px;
       }
-      #scan .scanTop { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
+      #dockProg { top: calc(120px + var(--st)); bottom: auto; }
+      #scan .scanTop, #dockProg .scanTop { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
       #scan #scanName { color: #fff; }
-      #scan #scanPct { color: var(--cyan); font-weight: 800; font-variant-numeric: tabular-nums; }
-      #scan .bar { height: 7px; margin-top: 7px; border-radius: 4px; background: rgba(255,255,255,0.16); overflow: hidden; }
-      #scan .bar i { display: block; height: 100%; width: 100%; transform-origin: left; background: linear-gradient(90deg, var(--teal), var(--cyan)); }
-      #scan.done { border-color: var(--teal); }
-      #scan.done #scanPct { color: var(--teal); }
+      #scan #scanPct, #dockProg #dockPct { color: var(--cyan); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      #scan .bar, #dockProg .bar { height: 7px; margin-top: 7px; border-radius: 4px; background: rgba(255,255,255,0.16); overflow: hidden; }
+      #scan .bar i, #dockProg .bar i { display: block; height: 100%; width: 100%; transform-origin: left; background: linear-gradient(90deg, var(--teal), var(--cyan)); }
+      #scan.done, #dockProg.done { border-color: var(--teal); }
+      #scan.done #scanPct, #dockProg.done #dockPct { color: var(--teal); }
       #card {
         left: 50%; top: 22%; transform: translate(-50%, -8px); z-index: 10; width: min(88vw, 440px);
         padding: 16px 18px; border-radius: 16px; background: rgba(7, 26, 54, 0.92);
@@ -169,6 +170,7 @@
         #archBtn { min-height: 50px; height: 50px; padding: 0 14px; right: calc(12px + var(--sr)); top: calc(70px + var(--st)); }
         #flight { left: calc(14px + var(--sl)); transform: none; bottom: auto; top: calc(96px + var(--st)); width: 190px; }
         #warn { top: calc(182px + var(--st)); }
+        #dockProg { top: calc(236px + var(--st)); }
         #scan { bottom: calc(154px + var(--sb)); }
       }
       @media (orientation: landscape) and (max-height: 480px) {
@@ -186,6 +188,10 @@
       <div id="scan" class="hidden">
         <div class="scanTop"><span>扫描 <b id="scanName"></b></span><span id="scanPct">0%</span></div>
         <div class="bar"><i id="scanBarFill"></i></div>
+      </div>
+      <div id="dockProg" class="hidden">
+        <div class="scanTop"><span id="dockLabel">停靠补给</span><span id="dockPct">0%</span></div>
+        <div class="bar"><i id="dockBarFill"></i></div>
       </div>
       <div id="card" aria-live="polite">
         <div id="cardName">扫描完成</div>
