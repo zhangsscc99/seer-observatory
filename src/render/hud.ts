@@ -15,6 +15,7 @@ const KIND_LABEL: Record<PlanetDef['kind'], string> = {
   'gas-storm': '气态巨行星',
   'red-giant': '红巨星',
   binary: '双星系',
+  blackhole: '黑洞边缘',
 };
 
 const HAZARD_LABEL: Record<HazardKind, string> = {
@@ -23,6 +24,7 @@ const HAZARD_LABEL: Record<HazardKind, string> = {
   wind: '湍流',
   gravity: '强引力',
   photon: '光子场',
+  tidal: '潮汐力场',
 };
 
 export interface HudHandlers {

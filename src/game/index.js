@@ -7,3 +7,4 @@ import "./mode.test.js";
 import "./scan.test.js";
 import "./ship.test.js";
 import "./space.test.js";
+import "./tidal.test.js";

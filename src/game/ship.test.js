@@ -129,7 +129,8 @@ var PLANETS = [
   { id: "icer", name: "\u51B0\u73AF\u5E26", pos: { x: -80, y: 120, z: -1180 }, radius: 120, hazard: "cold", colors: [9425138, 15267839, 16777215], atmosphere: 10479359, kind: "ice-ring", seed: 53 },
   { id: "gas-storm", name: "\u6C14\u6001\u5DE8\u884C\u661F", pos: { x: 620, y: 60, z: 780 }, radius: 145, hazard: "gravity", colors: [5909012, 12876346, 16770744], atmosphere: 16760954, kind: "gas-storm", seed: 67 },
   { id: "red-giant", name: "\u7EA2\u5DE8\u661F\u7CFB", pos: { x: -480, y: 160, z: 1020 }, radius: 280, hazard: "radiation", colors: [8002574, 15885337, 16773840], atmosphere: 16745528, kind: "red-giant", seed: 89 },
-  { id: "binary", name: "\u53CC\u5B50\u661F\u57DF", pos: { x: 1100, y: -30, z: -520 }, radius: 135, hazard: "photon", colors: [3833813, 15764538, 15923199], atmosphere: 14280959, kind: "binary", seed: 97 }
+  { id: "binary", name: "\u53CC\u5B50\u661F\u57DF", pos: { x: 1100, y: -30, z: -520 }, radius: 135, hazard: "photon", colors: [3833813, 15764538, 15923199], atmosphere: 14280959, kind: "binary", seed: 97 },
+  { id: "blackhole", name: "\u9ED1\u6D1E\u8FB9\u7F18 \xB7 \u5F25\u591C", pos: { x: -1080, y: 110, z: -520 }, radius: 105, hazard: "tidal", colors: [1838390, 9133302, 16052479], atmosphere: 12163327, kind: "blackhole", seed: 113 }
 ];
 var TARGETS = PLANETS.map((p) => p.id);
 var SUN_DIR = (() => {

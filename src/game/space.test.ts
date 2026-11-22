@@ -17,6 +17,7 @@ test('hazards follow the sector design table', () => {
   assert.equal(planetById('gas-storm')!.hazard, 'gravity');
   assert.equal(planetById('red-giant')!.hazard, 'radiation');
   assert.equal(planetById('binary')!.hazard, 'photon');
+  assert.equal(planetById('blackhole')!.hazard, 'tidal');
 });
 
 test('icer: ice-ring planet registered and scannable', () => {
@@ -92,6 +93,32 @@ test('binary: binary system registered, scannable, photon hazard and twin stars 
     const dist = Math.hypot(s.pos.x, s.pos.y, s.pos.z);
     assert.ok(dist >= 1500 && dist <= 2600, `${s.id} dist ${dist.toFixed(1)}`);
     assert.ok(s.radius > 0 && s.intensity > 0);
+  }
+});
+
+test('blackhole: registered, non-overlapping, tidal hazard, and scan log valid', () => {
+  const p = planetById('blackhole');
+  assert.ok(p);
+  assert.equal(p.kind, 'blackhole');
+  assert.equal(p.hazard, 'tidal');
+  assert.ok(p.radius >= 90 && p.radius <= 120, `radius ${p.radius}`);
+  assert.ok(TARGETS.includes('blackhole'));
+  assert.equal(TARGETS.filter((id) => id === 'blackhole').length, 1);
+  const res = scanResult('blackhole');
+  assert.equal(res.resource, '引力波晶');
+  assert.ok(res.amount >= 3 && res.amount <= 7, `amount ${res.amount}`);
+  const len = [...res.log].length;
+  assert.ok(len >= 40, `log length ${len} < 40`);
+  assert.match(res.log, /吸积盘/);
+  assert.match(res.log, /时间膨胀/);
+  assert.match(res.log, /光子环/);
+  const eff = hazardEffect(p.hazard);
+  assert.equal(eff.energyMul, 0.7);
+  assert.equal(eff.warn, '潮汐力场·回充 ×0.7');
+  for (const other of PLANETS) {
+    if (other.id === 'blackhole') continue;
+    const d = Math.hypot(p.pos.x - other.pos.x, p.pos.y - other.pos.y, p.pos.z - other.pos.z);
+    assert.ok(d > p.radius + other.radius + 100, `blackhole vs ${other.id}: ${d.toFixed(1)} <= ${p.radius + other.radius + 100}`);
   }
 });
 
