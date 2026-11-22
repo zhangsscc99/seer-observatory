@@ -3,7 +3,7 @@
 // (id / progress / done) so progress survives leaving range and only resets
 // when a different target comes into view.
 
-export type HazardKind = 'cold' | 'radiation' | 'wind' | 'gravity' | 'photon' | 'tidal';
+export type HazardKind = 'cold' | 'radiation' | 'wind' | 'gravity' | 'photon' | 'tidal' | 'traffic';
 
 export interface ScanTarget {
   id: string;
@@ -48,6 +48,7 @@ export const RESOURCE_BY_KIND: Record<string, string> = {
   'red-giant': '红巨星等离子',
   binary: '双星等离子',
   blackhole: '引力波晶',
+  'ring-city': '环城通行密钥',
   ocean: '重水样本',
   gas: '氦气罐',
   ice: '冰晶',
@@ -65,6 +66,7 @@ const RESOURCE_BY_ID: Record<string, string> = {
   'red-giant': '红巨星等离子',
   binary: '双星等离子',
   blackhole: '引力波晶',
+  'ring-city': '环城通行密钥',
 };
 
 const LOG_BY_ID: Record<string, string> = {
@@ -77,6 +79,7 @@ const LOG_BY_ID: Record<string, string> = {
   'red-giant': '红巨星日冕耀斑剧烈翻涌，强辐射穿透厚重尘埃幕，高温等离子信号充盈星域。',
   binary: '双星冷白与暖橙双色温辐射在此交汇，晨昏环带高能卷云翻涌，强光子场持续为飞船推进器提供稳定回充增益。',
   blackhole: '弥夜事件视界外侧白热光子环清晰可辨，高速旋转的吸积盘因多普勒效应呈现蓝白与暗红不对称光带，强潮汐力场已引发显著时间膨胀效应。',
+  'ring-city': '拾光环城由精密双层金属停靠环构筑而成，环周窗光排布严谨有序且明暗错落，四座对置停靠塔标示出高能补给站位，环城航道信标持续为过往飞船提供稳定回充增益。',
 };
 
 const GENERIC_LOGS: readonly string[] = [
@@ -117,6 +120,7 @@ const HAZARDS: Record<HazardKind, HazardEffect & { warn: string }> = {
   gravity: { energyMul: 0.8, warn: '强引力·注意距离' },
   photon: { energyMul: 1.3, warn: '双星光子场·回充 ×1.3' },
   tidal: { energyMul: 0.7, warn: '潮汐力场·回充 ×0.7' },
+  traffic: { energyMul: 1.15, warn: '环城航道·回充 ×1.15' },
 };
 
 export function hazardEffect(h: HazardKind | undefined): HazardEffect {

@@ -16,6 +16,7 @@ const KIND_LABEL: Record<PlanetDef['kind'], string> = {
   'red-giant': '红巨星',
   binary: '双星系',
   blackhole: '黑洞边缘',
+  'ring-city': '环形城市',
 };
 
 const HAZARD_LABEL: Record<HazardKind, string> = {
@@ -25,6 +26,7 @@ const HAZARD_LABEL: Record<HazardKind, string> = {
   gravity: '强引力',
   photon: '光子场',
   tidal: '潮汐力场',
+  traffic: '环城航道',
 };
 
 export interface HudHandlers {

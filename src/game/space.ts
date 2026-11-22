@@ -19,7 +19,7 @@ export interface PlanetDef {
   colors: [number, number, number];
   atmosphere: number;
   /** texture recipe */
-  kind: 'ocean' | 'gas' | 'ice' | 'lava' | 'ice-ring' | 'gas-storm' | 'red-giant' | 'binary' | 'blackhole';
+  kind: 'ocean' | 'gas' | 'ice' | 'lava' | 'ice-ring' | 'gas-storm' | 'red-giant' | 'binary' | 'blackhole' | 'ring-city';
   seed: number;
 }
 
@@ -44,6 +44,7 @@ export const PLANETS: readonly PlanetDef[] = [
   { id: 'red-giant', name: '红巨星系', pos: { x: -480, y: 160, z: 1020 }, radius: 280, hazard: 'radiation', colors: [0x7a1c0e, 0xf26419, 0xfff2d0], atmosphere: 0xff8438, kind: 'red-giant', seed: 89 },
   { id: 'binary', name: '双子星域', pos: { x: 1100, y: -30, z: -520 }, radius: 135, hazard: 'photon', colors: [0x3a7fd5, 0xf08c3a, 0xf2f7ff], atmosphere: 0xd9e8ff, kind: 'binary', seed: 97 },
   { id: 'blackhole', name: '黑洞边缘 · 弥夜', pos: { x: -1080, y: 110, z: -520 }, radius: 105, hazard: 'tidal', colors: [0x1c0d36, 0x8b5cf6, 0xf4f0ff], atmosphere: 0xb998ff, kind: 'blackhole', seed: 113 },
+  { id: 'ring-city', name: '环形城市 · 拾光', pos: { x: 260, y: -150, z: -1330 }, radius: 130, hazard: 'traffic', colors: [0x141a24, 0xffb464, 0xeaf4ff], atmosphere: 0x9fd8ff, kind: 'ring-city', seed: 131 },
 ];
 
 /** twin distant stars of the binary system (cool-white primary + warm-orange companion) */
