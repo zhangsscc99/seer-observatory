@@ -90,8 +90,8 @@ function applyScene(s: Playable): void {
   robotView.group.visible = !inSpace;
   space.near.visible = inSpace;
   shipView.group.visible = inSpace;
-  // per-scene exposure: the white cabin needs a darker grade than open space
-  renderer.toneMappingExposure = inSpace ? 1.0 : 0.72;
+  // per-scene exposure: tuned so cabin PBR + directional key stays cleanly inside 110..135 mean
+  renderer.toneMappingExposure = inSpace ? 1.0 : 1.04;
   camera.near = inSpace ? 0.5 : 0.08;
   camera.updateProjectionMatrix();
 }
@@ -538,15 +538,17 @@ window.__seer = {
       tidalField.reset();
       tidalFlash = 0;
     } else if (p.kind === 'ring-city') {
-      // 3.0R hero view ~23° above the tilted ring plane, offset from anti-sun so sunlit metallic bevels,
-      // elliptical double rings, all 4 docking towers, and dense warm window grid all read clearly
+      // 3.0R hero view ~23° above the tilted ring plane on the inward-sunlit 3/4 side (stays well inside
+      // SECTOR_RADIUS so no boundary warning triggers, and frames ellipse + 4 docking towers + window grid)
       dist = p.radius * 3.0;
       const n = new THREE.Vector3(0, 1, 0).applyQuaternion(RING_CITY_QUAT).normalize();
-      const sunProj = dir.clone().addScaledVector(n, -dir.dot(n)).normalize();
-      const tangent = new THREE.Vector3().crossVectors(n, sunProj).normalize();
-      const az = (46 * Math.PI) / 180;
+      const inward = new THREE.Vector3(-p.pos.x, -p.pos.y, -p.pos.z);
+      const inProj = inward.addScaledVector(n, -inward.dot(n)).normalize();
+      const tangent = new THREE.Vector3().crossVectors(n, inProj).normalize();
+      if (tangent.dot(dir) < 0) tangent.negate();
+      const az = (48 * Math.PI) / 180;
       const el = (23 * Math.PI) / 180;
-      dir.copy(sunProj)
+      dir.copy(inProj)
         .multiplyScalar(Math.cos(az))
         .addScaledVector(tangent, Math.sin(az))
         .multiplyScalar(Math.cos(el))

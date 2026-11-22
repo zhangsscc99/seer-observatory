@@ -318,8 +318,8 @@ export function buildCabin(): CabinView {
 
   // light spill: warm-ivory & pale-blue directional spill landing on the floor under the windows
   const warmSpillTex = radialTexture([
-    [0, 'rgba(255,238,198,0.34)'],
-    [0.42, 'rgba(182,222,255,0.16)'],
+    [0, 'rgba(255,236,188,0.40)'],
+    [0.44, 'rgba(182,222,255,0.18)'],
     [1, 'rgba(90,150,255,0)'],
   ]);
   const coolSpillTex = radialTexture([

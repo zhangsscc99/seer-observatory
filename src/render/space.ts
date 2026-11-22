@@ -1127,25 +1127,25 @@ function buildRingCity(p: PlanetDef): THREE.Group {
   const hullTex = ringCityHullTexture(p.seed);
   const hullMat = new THREE.MeshStandardMaterial({
     map: hullTex,
-    color: 0x5c6d82,
+    color: 0x8297b2,
     metalness: 0.85,
     roughness: 0.35,
-    envMapIntensity: 1.4,
+    envMapIntensity: 1.75,
     side: THREE.DoubleSide,
   });
   const trimMat = new THREE.MeshStandardMaterial({
-    color: 0x263242,
-    metalness: 0.88,
-    roughness: 0.32,
-    envMapIntensity: 1.35,
+    color: 0x3b4d64,
+    metalness: 0.86,
+    roughness: 0.33,
+    envMapIntensity: 1.6,
     side: THREE.DoubleSide,
   });
   const coreMat = new THREE.MeshStandardMaterial({
     map: ringCityCoreTexture(p.seed),
-    color: 0x3b485c,
+    color: 0x4f617a,
     metalness: 0.82,
     roughness: 0.42,
-    envMapIntensity: 1.1,
+    envMapIntensity: 1.35,
   });
 
   // 1) Main outer ring (1.55R–1.75R) with chamfered architectural profile
@@ -1289,15 +1289,15 @@ function buildRingCity(p: PlanetDef): THREE.Group {
     }
   };
 
-  addWallBand(120, R * 1.753, [-R * 0.038, 0, R * 0.038], true, R * 0.042, R * 0.014);
-  addWallBand(108, R * 1.547, [-R * 0.030, R * 0.030], false, R * 0.040, R * 0.014);
-  addDeckBand(108, [R * 1.592, R * 1.708], mainH + R * 0.004, true, R * 0.040, R * 0.017);
-  addDeckBand(96, [R * 1.592, R * 1.708], -mainH - R * 0.004, false, R * 0.038, R * 0.017);
-  addWallBand(84, R * 1.303, [-R * 0.014, R * 0.014], true, R * 0.034, R * 0.011);
+  addWallBand(120, R * 1.753, [-R * 0.038, 0, R * 0.038], true, R * 0.046, R * 0.017);
+  addWallBand(108, R * 1.547, [-R * 0.030, R * 0.030], false, R * 0.044, R * 0.016);
+  addDeckBand(108, [R * 1.592, R * 1.708], mainH + R * 0.004, true, R * 0.046, R * 0.022);
+  addDeckBand(96, [R * 1.592, R * 1.708], -mainH - R * 0.004, false, R * 0.042, R * 0.020);
+  addWallBand(84, R * 1.303, [-R * 0.014, R * 0.014], true, R * 0.038, R * 0.013);
 
   const winGeo = new THREE.PlaneGeometry(1, 1);
   const winMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(1.85, 1.85, 1.85),
+    color: new THREE.Color(2.05, 2.05, 2.05),
     transparent: true,
     opacity: 1.0,
     side: THREE.DoubleSide,

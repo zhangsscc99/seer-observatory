@@ -61,11 +61,11 @@ export function createWindowGlassMaterial(): THREE.MeshPhysicalMaterial {
         vec3 gN = normalize(vNormal);
         vec3 gV = normalize(vViewPosition);
         float gFres = pow(1.0 - abs(dot(gN, gV)), 2.6);
-        float sillEdge = smoothstep(1.22, 0.95, vGlassWorld.y) + smoothstep(3.30, 3.55, vGlassWorld.y);
-        float diagSheen = pow(max(0.0, sin(atan(vGlassWorld.x, vGlassWorld.z) * 5.0 + vGlassWorld.y * 1.15)), 10.0);
-        vec3 glassEdgeTint = vec3(0.68, 0.88, 1.0);
-        gl_FragColor.rgb += glassEdgeTint * (gFres * 0.42 + sillEdge * 0.22 + diagSheen * 0.14);
-        gl_FragColor.a = clamp(gl_FragColor.a + gFres * 0.34 + sillEdge * 0.20 + diagSheen * 0.09, 0.08, 0.62);
+        float sillEdge = smoothstep(1.24, 0.95, vGlassWorld.y) + smoothstep(3.26, 3.55, vGlassWorld.y);
+        float diagSheen = pow(max(0.0, sin(atan(vGlassWorld.x, vGlassWorld.z) * 5.0 + vGlassWorld.y * 1.15)), 8.0);
+        vec3 glassEdgeTint = vec3(0.72, 0.90, 1.0);
+        gl_FragColor.rgb += glassEdgeTint * (gFres * 0.52 + sillEdge * 0.28 + diagSheen * 0.22);
+        gl_FragColor.a = clamp(gl_FragColor.a + gFres * 0.36 + sillEdge * 0.24 + diagSheen * 0.12, 0.10, 0.65);
         #include <dithering_fragment>
         `,
       );
