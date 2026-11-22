@@ -7,7 +7,7 @@ import { beltRocks, BINARY_STARS, PLANETS, STATION, SUN_DIR, SUN_DISTANCE, SUN_R
 import { MAT, arc, glow } from './materials.ts';
 import { PAL } from './palette.ts';
 import { buildRings } from './rings.ts';
-import { binaryTexture, flareTexture, planetTexture, radialTexture, redGiantTexture, rockTexture } from './textures.ts';
+import { binaryTexture, blackholeDiskTexture, blackholeLensTexture, flareTexture, planetTexture, radialTexture, redGiantTexture, rockTexture } from './textures.ts';
 
 const sunDir = new THREE.Vector3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z);
 
@@ -356,6 +356,427 @@ const HALO_SCALE = 1.16;
 const HALO_SCALE_NARROW = 1.05;
 const FROST_SCALE = 1.02;
 const DUST_VEIL_SCALE = 2.6;
+
+/** tilted accretion disk orientation in world space (local XZ -> tilted world plane, ~17° tilt) */
+export const BH_DISK_QUAT = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.28, 0.14, -0.22));
+export const BH_SPIN_AXIS = new THREE.Vector3(0, 1, 0).applyQuaternion(BH_DISK_QUAT).normalize();
+
+/** RingGeometry in local XZ (or XY when `inXY = true`) with seamless polar UVs:
+ *  u = azimuth [0,1) around the ring, v = radial [0,1] from innerR to outerR. */
+function polarRingGeometry(innerR: number, outerR: number, thetaSegs = 128, radialSegs = 6, inXY = false): THREE.BufferGeometry {
+  const geo = new THREE.BufferGeometry();
+  const cols = thetaSegs + 1;
+  const rows = radialSegs + 1;
+  const positions = new Float32Array(cols * rows * 3);
+  const normals = new Float32Array(cols * rows * 3);
+  const uvs = new Float32Array(cols * rows * 2);
+  const indices: number[] = [];
+
+  for (let rIdx = 0; rIdx < rows; rIdx++) {
+    const v = rIdx / radialSegs;
+    const r = innerR + (outerR - innerR) * v;
+    for (let tIdx = 0; tIdx < cols; tIdx++) {
+      const u = tIdx / thetaSegs;
+      const ang = u * Math.PI * 2;
+      const ca = Math.cos(ang);
+      const sa = Math.sin(ang);
+      const idx = rIdx * cols + tIdx;
+      if (inXY) {
+        positions[idx * 3] = ca * r;
+        positions[idx * 3 + 1] = sa * r;
+        positions[idx * 3 + 2] = 0;
+        normals[idx * 3] = 0;
+        normals[idx * 3 + 1] = 0;
+        normals[idx * 3 + 2] = 1;
+      } else {
+        positions[idx * 3] = ca * r;
+        positions[idx * 3 + 1] = 0;
+        positions[idx * 3 + 2] = sa * r;
+        normals[idx * 3] = 0;
+        normals[idx * 3 + 1] = 1;
+        normals[idx * 3 + 2] = 0;
+      }
+      uvs[idx * 2] = u;
+      uvs[idx * 2 + 1] = v;
+    }
+  }
+  for (let rIdx = 0; rIdx < radialSegs; rIdx++) {
+    for (let tIdx = 0; tIdx < thetaSegs; tIdx++) {
+      const a = rIdx * cols + tIdx;
+      const b = a + 1;
+      const c = a + cols;
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  return geo;
+}
+
+/** Black hole (`blackhole`): event horizon + asymmetric white-hot photon ring +
+ *  dual tilted Keplerian accretion disks with relativistic Doppler beaming +
+ *  gravitationally lensed back-side disk arch + 1.15R–1.60R bent starlight Einstein ring +
+ *  backlit purple/gold dust veil & 420 dust motes. All materials follow the rendering ladder
+ *  (MeshBasicMaterial / PointsMaterial + onBeforeCompile; zero RawShaderMaterial / post-FX). */
+function buildBlackhole(p: PlanetDef): THREE.Group {
+  const g = new THREE.Group();
+  g.position.set(p.pos.x, p.pos.y, p.pos.z);
+
+  const center = new THREE.Vector3(p.pos.x, p.pos.y, p.pos.z);
+  const bhUniforms = {
+    uTime: { value: 0 },
+    uCenter: { value: center },
+    uSpinAxis: { value: BH_SPIN_AXIS.clone() },
+    uCamPhase: { value: 0 },
+  };
+
+  // 1) Event horizon: pure void-black sphere (1.005R avoids any z-fighting with inner shells)
+  const horizonR = p.radius * 1.005;
+  const horizon = new THREE.Mesh(
+    new THREE.SphereGeometry(horizonR, 64, 48),
+    new THREE.MeshBasicMaterial({ color: 0x000000 }),
+  );
+  horizon.name = 'surface';
+  horizon.renderOrder = 1;
+  g.add(horizon);
+
+  // 2) Asymmetric white-hot photon ring (1.02R–1.085R BackSide additive shell via onBeforeCompile)
+  const photonScale = 1.088;
+  const photonEdge = Math.sqrt(1 - Math.pow(horizonR / (p.radius * photonScale), 2));
+  const photonMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    side: THREE.BackSide,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  photonMat.customProgramCacheKey = () => 'bh-photon-ring-v1';
+  photonMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uCenter = bhUniforms.uCenter;
+    shader.uniforms.uSpinAxis = bhUniforms.uSpinAxis;
+    shader.uniforms.uEdge = { value: photonEdge };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vBhW;\nvarying vec3 vBhN;')
+      .replace(
+        '#include <project_vertex>',
+        'vBhN = normalize(mat3(modelMatrix) * normal);\nvBhW = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <project_vertex>',
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        '#include <common>\nuniform vec3 uCenter;\nuniform vec3 uSpinAxis;\nuniform float uEdge;\nvarying vec3 vBhW;\nvarying vec3 vBhN;',
+      )
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        vec3 n = normalize(vBhN);
+        vec3 v = normalize(cameraPosition - vBhW);
+        float d = clamp(-dot(n, v) / uEdge, 0.0, 1.0);
+        // razor-sharp incandescent photon ring at 1.005R..1.05R + soft lavender-gold outer halo
+        float sharp = pow(d, 7.2) * 2.55;
+        float glow = pow(d, 2.3) * 0.58;
+        vec3 rad = normalize(vBhW - uCenter);
+        vec3 tang = cross(uSpinAxis, rad);
+        float tLen = length(tang);
+        vec3 vel = tLen > 0.001 ? tang / tLen : vec3(0.0, 1.0, 0.0);
+        float doppler = dot(vel, v);
+        // observer-facing approaching side burns white-hot blue-white; receding side is softer warm-violet
+        float asym = mix(0.55, 1.62, smoothstep(-0.85, 0.85, doppler));
+        vec3 colApproach = vec3(0.92, 0.96, 1.0);
+        vec3 colRecede = vec3(1.0, 0.72, 0.56);
+        vec3 ringTint = mix(colRecede, colApproach, smoothstep(-0.75, 0.75, doppler));
+        vec3 outerTint = mix(vec3(0.56, 0.34, 0.88), vec3(0.84, 0.88, 1.0), smoothstep(-0.6, 0.6, doppler));
+        diffuseColor.rgb = (ringTint * sharp + outerTint * glow) * asym;
+        diffuseColor.a = 1.0;`,
+      );
+  };
+  const photonRing = new THREE.Mesh(new THREE.SphereGeometry(p.radius * photonScale, 64, 48), photonMat);
+  photonRing.renderOrder = 3;
+  g.add(photonRing);
+
+  // 3) Accretion Disk: dual tilted Keplerian disks (inner 1.35R..2.38R faster, outer 1.95R..3.42R slower)
+  const diskTex = blackholeDiskTexture(p.seed);
+  const makeDiskMat = (cacheKey: string, speed: number, gain: number, warmShift: number): THREE.MeshBasicMaterial => {
+    const mat = new THREE.MeshBasicMaterial({
+      map: diskTex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    mat.customProgramCacheKey = () => cacheKey;
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = bhUniforms.uTime;
+      shader.uniforms.uCenter = bhUniforms.uCenter;
+      shader.uniforms.uSpinAxis = bhUniforms.uSpinAxis;
+      shader.uniforms.uSpeed = { value: speed };
+      shader.uniforms.uGain = { value: gain };
+      shader.uniforms.uWarmShift = { value: warmShift };
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vBhW;\nvarying vec2 vBhUv;')
+        .replace(
+          '#include <project_vertex>',
+          'vBhUv = uv;\nvBhW = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <project_vertex>',
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform float uTime;\nuniform vec3 uCenter;\nuniform vec3 uSpinAxis;\nuniform float uSpeed;\nuniform float uGain;\nuniform float uWarmShift;\nvarying vec3 vBhW;\nvarying vec2 vBhUv;',
+        )
+        .replace(
+          '#include <map_fragment>',
+          `// Keplerian differential UV advection: inner orbits sweep noticeably faster than outer edge
+          float kepler = 1.0 + 1.35 * (1.0 - vBhUv.y);
+          vec2 uvA = vec2(fract(vBhUv.x - uTime * uSpeed * kepler), clamp(vBhUv.y, 0.002, 0.998));
+          vec2 uvB = vec2(fract(vBhUv.x - uTime * uSpeed * kepler * 0.62 + 0.37), clamp(vBhUv.y * 0.96 + 0.02, 0.002, 0.998));
+          vec4 texA = texture2D(map, uvA);
+          vec4 texB = texture2D(map, uvB);
+          vec3 diskRgb = mix(texA.rgb, texB.rgb, 0.34);
+          // Relativistic Doppler beaming: approaching side blue-white & intense, receding side red-dim
+          vec3 rad = normalize(vBhW - uCenter);
+          vec3 tang = cross(uSpinAxis, rad);
+          float tLen = length(tang);
+          vec3 vel = tLen > 0.001 ? tang / tLen : vec3(1.0, 0.0, 0.0);
+          vec3 toCam = normalize(cameraPosition - vBhW);
+          float doppler = dot(vel, toCam);
+          float beam = mix(0.32, 1.98, smoothstep(-0.88, 0.88, doppler));
+          vec3 shiftHot = mix(vec3(1.0), vec3(0.76, 0.92, 1.32), max(doppler, 0.0));
+          vec3 shiftCool = mix(vec3(1.0), vec3(1.18, 0.42, 0.30), max(-doppler, 0.0));
+          vec3 radialTint = mix(vec3(1.0), vec3(0.95, 0.72, 0.88), uWarmShift * vBhUv.y);
+          float edgeFade = smoothstep(0.0, 0.10, vBhUv.y) * (1.0 - smoothstep(0.78, 1.0, vBhUv.y));
+          diffuseColor.rgb = diskRgb * shiftHot * shiftCool * radialTint * beam * uGain * edgeFade;
+          diffuseColor.a = 1.0;`,
+        );
+    };
+    return mat;
+  };
+
+  const diskGroup = new THREE.Group();
+  diskGroup.name = 'accretionDisk';
+  diskGroup.quaternion.copy(BH_DISK_QUAT);
+
+  const innerDiskMat = makeDiskMat('bh-disk-inner-v1', 0.055, 1.18, 0.0);
+  const innerDisk = new THREE.Mesh(polarRingGeometry(p.radius * 1.35, p.radius * 2.38, 128, 6), innerDiskMat);
+  innerDisk.name = 'innerDisk';
+  innerDisk.renderOrder = 4;
+
+  const outerDiskMat = makeDiskMat('bh-disk-outer-v1', 0.022, 0.88, 0.45);
+  const outerDisk = new THREE.Mesh(polarRingGeometry(p.radius * 1.95, p.radius * 3.42, 128, 6), outerDiskMat);
+  outerDisk.name = 'outerDisk';
+  outerDisk.position.y = p.radius * 0.012;
+  outerDisk.renderOrder = 4;
+
+  diskGroup.add(innerDisk, outerDisk);
+  g.add(diskGroup);
+
+  // 4) Gravitationally lensed back-side accretion disk arch (billboard aligned to projected spin axis)
+  const lensedDiskMat = new THREE.MeshBasicMaterial({
+    map: diskTex,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  lensedDiskMat.customProgramCacheKey = () => 'bh-lensed-disk-v1';
+  lensedDiskMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = bhUniforms.uTime;
+    shader.uniforms.uCenter = bhUniforms.uCenter;
+    shader.uniforms.uSpinAxis = bhUniforms.uSpinAxis;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vBhW;\nvarying vec2 vBhUv;')
+      .replace(
+        '#include <project_vertex>',
+        'vBhUv = uv;\nvBhW = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <project_vertex>',
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        '#include <common>\nuniform float uTime;\nuniform vec3 uCenter;\nuniform vec3 uSpinAxis;\nvarying vec3 vBhW;\nvarying vec2 vBhUv;',
+      )
+      .replace(
+        '#include <map_fragment>',
+        `// local billboard XY: angle 0 = +X (disk equator), angle PI/2 = +Y (upper lensed arch), -PI/2 = -Y (lower arch)
+        float ang = vBhUv.x * 6.2831853;
+        float sinA = sin(ang);
+        float cosA = cos(ang);
+        // upper arch (sinA > 0) brighter/fuller, lower secondary arch (sinA < 0) thinner; equatorial band attenuated
+        float upperArch = smoothstep(0.05, 0.55, sinA);
+        float lowerArch = smoothstep(-0.08, -0.62, sinA) * 0.65;
+        float archMask = upperArch + lowerArch;
+        float radEnv = smoothstep(0.0, 0.14, vBhUv.y) * (1.0 - smoothstep(0.42 + 0.34 * upperArch, 0.98, vBhUv.y));
+        vec2 uvL = vec2(fract(vBhUv.x * 1.5 - uTime * 0.042), clamp(vBhUv.y * 0.82 + 0.06, 0.002, 0.998));
+        vec3 texRgb = texture2D(map, uvL).rgb;
+        // Doppler asymmetry consistent with the 3D disk (cosA aligns with approaching/receding tangent)
+        vec3 rad = normalize(vBhW - uCenter);
+        vec3 tang = cross(uSpinAxis, rad);
+        float tLen = length(tang);
+        vec3 vel = tLen > 0.001 ? tang / tLen : vec3(1.0, 0.0, 0.0);
+        vec3 toCam = normalize(cameraPosition - vBhW);
+        float doppler = dot(vel, toCam);
+        float beam = mix(0.45, 1.65, smoothstep(-0.85, 0.85, doppler));
+        vec3 shiftHot = mix(vec3(1.0), vec3(0.80, 0.94, 1.28), max(doppler, 0.0));
+        vec3 shiftCool = mix(vec3(1.0), vec3(1.16, 0.48, 0.38), max(-doppler, 0.0));
+        diffuseColor.rgb = texRgb * shiftHot * shiftCool * beam * archMask * radEnv * 0.92;
+        diffuseColor.a = 1.0;`,
+      );
+  };
+  const lensedDisk = new THREE.Mesh(polarRingGeometry(p.radius * 1.03, p.radius * 1.72, 112, 4, true), lensedDiskMat);
+  lensedDisk.name = 'lensedDisk';
+  lensedDisk.renderOrder = 3;
+  g.add(lensedDisk);
+
+  // 5) Gravitational Lensing Starlight / Nebula Arc (1.15R–1.60R billboard Einstein ring, distinct cool layer)
+  const lensTex = blackholeLensTexture(p.seed + 18);
+  const lensMat = new THREE.MeshBasicMaterial({
+    map: lensTex,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  lensMat.customProgramCacheKey = () => 'bh-einstein-lens-v1';
+  lensMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = bhUniforms.uTime;
+    shader.uniforms.uCamPhase = bhUniforms.uCamPhase;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vBhUv;')
+      .replace('#include <project_vertex>', 'vBhUv = uv;\n#include <project_vertex>');
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        '#include <common>\nuniform float uTime;\nuniform float uCamPhase;\nvarying vec2 vBhUv;',
+      )
+      .replace(
+        '#include <map_fragment>',
+        `// Einstein-ring tangential distortion stronger near 1.15R, decaying toward 1.60R
+        float bend = 0.18 / (vBhUv.y + 0.24);
+        vec2 uv1 = vec2(fract(vBhUv.x + bend + uCamPhase + uTime * 0.004), clamp(vBhUv.y, 0.002, 0.998));
+        vec2 uv2 = vec2(fract(vBhUv.x - bend * 0.65 + uCamPhase * 0.7 - uTime * 0.003 + 0.5), clamp(vBhUv.y * 0.92 + 0.04, 0.002, 0.998));
+        vec3 s1 = texture2D(map, uv1).rgb;
+        vec3 s2 = texture2D(map, uv2).rgb;
+        float arcEnv = sin(vBhUv.y * 3.14159265);
+        float caustic = 0.72 + 0.28 * sin(vBhUv.x * 12.56637 + uCamPhase * 6.28318);
+        diffuseColor.rgb = (s1 * 0.78 + s2 * 0.36) * vec3(0.76, 0.88, 1.15) * arcEnv * caustic * 0.68;
+        diffuseColor.a = 1.0;`,
+      );
+  };
+  const lensRing = new THREE.Mesh(polarRingGeometry(p.radius * 1.15, p.radius * 1.62, 112, 4, true), lensMat);
+  lensRing.name = 'lensRing';
+  lensRing.renderOrder = 2;
+  g.add(lensRing);
+
+  // 6) Volumetric backlit dust veil shell (~2.9R, hollow center, lifts dark space >= 0.06)
+  const veilMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  veilMat.customProgramCacheKey = () => 'bh-dust-veil-v1';
+  veilMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = bhUniforms.uTime;
+    shader.uniforms.uCenter = bhUniforms.uCenter;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vBhW;\nvarying vec3 vBhN;')
+      .replace(
+        '#include <project_vertex>',
+        'vBhN = normalize(mat3(modelMatrix) * normal);\nvBhW = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <project_vertex>',
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+        uniform float uTime;
+        uniform vec3 uCenter;
+        varying vec3 vBhW;
+        varying vec3 vBhN;
+        float bhHash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+        float bhNoise3(vec3 p) {
+          vec3 i = floor(p); vec3 f = fract(p);
+          vec3 u = f * f * (3.0 - 2.0 * f);
+          return mix(
+            mix(mix(bhHash3(i), bhHash3(i + vec3(1.0, 0.0, 0.0)), u.x), mix(bhHash3(i + vec3(0.0, 1.0, 0.0)), bhHash3(i + vec3(1.0, 1.0, 0.0)), u.x), u.y),
+            mix(mix(bhHash3(i + vec3(0.0, 0.0, 1.0)), bhHash3(i + vec3(1.0, 0.0, 1.0)), u.x), mix(bhHash3(i + vec3(0.0, 1.0, 1.0)), bhHash3(i + vec3(1.0, 1.0, 1.0)), u.x), u.y),
+            u.z);
+        }`,
+      )
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        vec3 n = normalize(vBhN);
+        vec3 v = normalize(cameraPosition - vBhW);
+        float ndv = abs(dot(n, v));
+        float limb = smoothstep(0.95, 0.30, ndv) * smoothstep(0.04, 0.28, ndv);
+        vec3 dir = normalize(vBhW - uCenter);
+        float drift = uTime * 0.012;
+        float cloud = bhNoise3(dir * 4.8 + vec3(drift, -drift * 0.5, drift * 0.7));
+        float fine = bhNoise3(dir * 22.0 - vec3(drift * 1.2, drift * 0.8, -drift));
+        vec3 dustCol = mix(vec3(0.24, 0.16, 0.44), vec3(0.88, 0.64, 0.48), cloud * 0.55 + fine * 0.45);
+        diffuseColor.rgb = dustCol;
+        diffuseColor.a = clamp((0.04 + limb * 0.18) * (0.45 + 0.55 * cloud) * (0.72 + 0.28 * fine), 0.0, 0.24);`,
+      );
+  };
+  const dustVeil = new THREE.Mesh(new THREE.SphereGeometry(p.radius * 2.9, 44, 28), veilMat);
+  dustVeil.name = 'bhDustVeil';
+  dustVeil.renderOrder = 2;
+  g.add(dustVeil);
+
+  // 7) 420 (>=300) backlit orbiting dust motes in 1.55R..3.6R envelope
+  const moteCount = 420;
+  const rnd = mulberry32(p.seed + 503);
+  const mPos = new Float32Array(moteCount * 3);
+  const mCol = new Float32Array(moteCount * 3);
+  const tmpPt = new THREE.Vector3();
+  for (let i = 0; i < moteCount; i++) {
+    const phi = rnd() * Math.PI * 2;
+    const z = (rnd() * 2 - 1) * (rnd() < 0.65 ? 0.34 : 0.92); // denser near disk plane
+    const s = Math.sqrt(Math.max(0, 1 - z * z));
+    const r = p.radius * (1.55 + Math.pow(rnd(), 0.78) * 2.1);
+    tmpPt.set(s * Math.cos(phi) * r, z * r, s * Math.sin(phi) * r).applyQuaternion(BH_DISK_QUAT);
+    mPos[i * 3] = tmpPt.x;
+    mPos[i * 3 + 1] = tmpPt.y;
+    mPos[i * 3 + 2] = tmpPt.z;
+    const warm = Math.max(0, 1 - Math.abs(z) * 1.8);
+    const br = 0.62 + rnd() * 0.38;
+    mCol[i * 3] = (0.64 + 0.36 * warm) * br;
+    mCol[i * 3 + 1] = (0.58 + 0.26 * warm) * br;
+    mCol[i * 3 + 2] = (1.0 - 0.34 * warm) * br;
+  }
+  const moteGeo = new THREE.BufferGeometry();
+  moteGeo.setAttribute('position', new THREE.BufferAttribute(mPos, 3));
+  moteGeo.setAttribute('color', new THREE.BufferAttribute(mCol, 3));
+  const motes = new THREE.Points(
+    moteGeo,
+    new THREE.PointsMaterial({
+      map: radialTexture(
+        [
+          [0, 'rgba(255,248,240,1)'],
+          [0.35, 'rgba(216,190,255,0.68)'],
+          [1, 'rgba(120,86,210,0)'],
+        ],
+        64,
+      ),
+      size: p.radius * 0.052,
+      sizeAttenuation: true,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.72,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  motes.name = 'dustMotes';
+  g.add(motes);
+
+  g.userData.bhUniforms = bhUniforms;
+  g.userData.bhCenter = center;
+  g.userData.lensedDisk = lensedDisk;
+  g.userData.lensRing = lensRing;
+  return g;
+}
 
 /** procedural coronal prominence arch ribbons (5 magnetic plasma loops in 1 draw call) */
 function buildProminences(p: PlanetDef): { mesh: THREE.Mesh; material: THREE.ShaderMaterial } {
@@ -779,6 +1200,8 @@ function buildPlanet(p: PlanetDef): THREE.Group {
   g.position.set(p.pos.x, p.pos.y, p.pos.z);
   const atmo = new THREE.Color(p.atmosphere);
 
+  if (p.kind === 'blackhole') return buildBlackhole(p);
+
   if (p.kind === 'red-giant') {
     const surfaceMat = new THREE.ShaderMaterial({
       vertexShader: PLANET_VERT,
@@ -973,6 +1396,8 @@ export interface SpaceView {
   near: THREE.Group;
   sunLight: THREE.DirectionalLight;
   setTarget(id: string | null): void;
+  /** trigger expanding cyan-white tidal repulsion shockwave ring at the black hole */
+  triggerTidalPulse(): void;
   update(t: number, dt: number, cam: THREE.Camera, shipPos: THREE.Vector3, shipFwd: THREE.Vector3, speedFrac: number): void;
 }
 
@@ -1055,6 +1480,38 @@ export function buildSpace(): SpaceView {
     near.add(starLight);
   }
 
+  // local accretion-disk warm-white & cool-violet PointLights + directional rim light for blackhole
+  // (all isolated inside `near` so cabin lighting is never affected)
+  const bhPlanet = PLANETS.find((p) => p.kind === 'blackhole');
+  const bhCenter = bhPlanet ? new THREE.Vector3(bhPlanet.pos.x, bhPlanet.pos.y, bhPlanet.pos.z) : null;
+  const bhRimLight = new THREE.DirectionalLight(0xffe6c8, 0);
+  near.add(bhRimLight, bhRimLight.target);
+  if (bhPlanet) {
+    const warmDiskLight = new THREE.PointLight(0xffd6a6, 1700, bhPlanet.radius * 6.5, 0.88);
+    warmDiskLight.position.set(bhPlanet.pos.x + bhPlanet.radius * 1.4, bhPlanet.pos.y + bhPlanet.radius * 0.4, bhPlanet.pos.z + bhPlanet.radius * 0.8);
+    const violetHaloLight = new THREE.PointLight(0xa382ff, 1150, bhPlanet.radius * 6.5, 0.9);
+    violetHaloLight.position.set(bhPlanet.pos.x - bhPlanet.radius * 1.2, bhPlanet.pos.y - bhPlanet.radius * 0.5, bhPlanet.pos.z - bhPlanet.radius * 0.9);
+    near.add(warmDiskLight, violetHaloLight);
+  }
+  // expanding cyan-white shockwave ring on crush auto-ejection (non-combat visual cue)
+  const pulseMat = new THREE.MeshBasicMaterial({
+    color: 0xaef6ff,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const pulseRing = new THREE.Mesh(new THREE.RingGeometry(0.92, 1.0, 72), pulseMat);
+  pulseRing.visible = false;
+  if (bhCenter) pulseRing.position.copy(bhCenter);
+  near.add(pulseRing);
+  let tidalPulseAge = -1;
+  const bhLookDir = new THREE.Vector3();
+  const bhProjUp = new THREE.Vector3();
+  const bhRight = new THREE.Vector3();
+  const bhBasis = new THREE.Matrix4();
+
   // stardust: points in a box around the ship, wrapped as it moves
   const rnd = mulberry32(3);
   const dust = new Float32Array(DUST_COUNT * 3);
@@ -1084,10 +1541,36 @@ export function buildSpace(): SpaceView {
       marker.scale.setScalar(p.radius * 1.3);
       marker.visible = true;
     },
-    update(t, dt, _cam, shipPos, _fwd, speedFrac) {
+    triggerTidalPulse() {
+      if (!bhCenter) return;
+      tidalPulseAge = 0;
+      pulseRing.position.copy(bhCenter);
+      pulseRing.visible = true;
+    },
+    update(t, dt, cam, shipPos, _fwd, speedFrac) {
       for (const p of planets) {
         p.getObjectByName('surface')!.rotation.y += dt * 0.01;
         for (const m of (p.userData.timeMats ?? []) as THREE.ShaderMaterial[]) m.uniforms.uTime.value = t;
+        const bhU = p.userData.bhUniforms as { uTime: { value: number }; uCamPhase: { value: number } } | undefined;
+        if (bhU) {
+          bhU.uTime.value = t;
+          const c = p.userData.bhCenter as THREE.Vector3;
+          bhLookDir.subVectors(cam.position, c).normalize();
+          bhU.uCamPhase.value = Math.atan2(bhLookDir.x, bhLookDir.z) / (Math.PI * 2);
+          // orient lensed back-disk billboard toward camera, rolled so +Y aligns with projected BH_SPIN_AXIS
+          const lensed = p.userData.lensedDisk as THREE.Mesh | undefined;
+          if (lensed) {
+            bhProjUp.copy(BH_SPIN_AXIS).addScaledVector(bhLookDir, -BH_SPIN_AXIS.dot(bhLookDir));
+            if (bhProjUp.lengthSq() < 1e-4) bhProjUp.set(0, 1, 0);
+            bhProjUp.normalize();
+            bhRight.crossVectors(bhProjUp, bhLookDir).normalize();
+            bhProjUp.crossVectors(bhLookDir, bhRight).normalize();
+            bhBasis.makeBasis(bhRight, bhProjUp, bhLookDir);
+            lensed.quaternion.setFromRotationMatrix(bhBasis);
+          }
+          const lens = p.userData.lensRing as THREE.Mesh | undefined;
+          if (lens) lens.quaternion.copy(cam.quaternion);
+        }
         const gs = p.getObjectByName('gasStation');
         if (gs) {
           const base = gs.userData.basePos as THREE.Vector3;
@@ -1124,6 +1607,31 @@ export function buildSpace(): SpaceView {
         binaryWarmLight.intensity = 1.5 * w;
         sunLight.color.copy(baseSunColor).lerp(coolStarColor, w);
         sunLight.position.copy(baseSunPos).lerp(binaryCoolPos, w);
+      }
+      if (bhCenter && bhPlanet) {
+        // smooth distance-attenuated rim key light from the accretion disk onto the ship's BH-facing hull
+        const dBh = shipPos.distanceTo(bhCenter);
+        const u = Math.max(0, Math.min(1, (dBh - 480) / (860 - 480)));
+        const w = 1 - u * u * (3 - 2 * u);
+        bhRimLight.intensity = 2.35 * w;
+        bhRimLight.position.copy(bhCenter);
+        bhRimLight.target.position.copy(shipPos);
+        bhRimLight.target.updateMatrixWorld();
+        if (tidalPulseAge >= 0) {
+          tidalPulseAge += dt;
+          const dur = 0.85;
+          if (tidalPulseAge >= dur) {
+            tidalPulseAge = -1;
+            pulseRing.visible = false;
+            pulseMat.opacity = 0;
+          } else {
+            const pFrac = tidalPulseAge / dur;
+            const ease = 1 - Math.pow(1 - pFrac, 2.4);
+            pulseRing.quaternion.copy(cam.quaternion);
+            pulseRing.scale.setScalar(bhPlanet.radius * (1.15 + ease * 2.35));
+            pulseMat.opacity = (1 - pFrac) * 0.85;
+          }
+        }
       }
       beacon.scale.setScalar(1 + 0.5 * Math.max(0, Math.sin(t * 3)));
       // wrap dust into the box centred on the ship

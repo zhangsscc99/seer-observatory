@@ -67,6 +67,16 @@
       #energy { margin-top: 6px; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
       #energy i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--teal), var(--cyan)); transform-origin: left; }
       #energy.low i { background: #ff9d5c; }
+      #dilation { margin-top: 6px; padding-top: 5px; border-top: 1px solid rgba(56, 225, 255, 0.28); color: #d8c8ff; font-size: 12px; }
+      #dilationVal { color: #b9ecff; font-weight: 800; font-variant-numeric: tabular-nums; }
+      #vignette {
+        inset: 0; pointer-events: none; z-index: 2; opacity: 0;
+        background: radial-gradient(ellipse at center, rgba(8, 6, 24, 0) 46%, rgba(10, 6, 30, 0.72) 100%);
+      }
+      #tidalFlash {
+        inset: 0; pointer-events: none; z-index: 9; opacity: 0;
+        background: radial-gradient(circle at center, rgba(240, 252, 255, 0.95) 0%, rgba(128, 225, 255, 0.55) 55%, rgba(88, 120, 255, 0) 100%);
+      }
       #warn {
         left: 50%; transform: translateX(-50%); top: calc(76px + var(--st)); z-index: 8;
         max-width: min(74vw, 620px); padding: 8px 18px; border-radius: 999px; font-size: 13px; font-weight: 700;
@@ -186,6 +196,7 @@
         <div class="row"><span>航速</span><span><span id="speed">0</span> km/s</span></div>
         <div class="row" style="margin-top: 4px"><span>推进能量</span><span id="energyPct">100%</span></div>
         <div id="energy"><i></i></div>
+        <div id="dilation" class="row hidden"><span>本地时间</span><b id="dilationVal">×1.0</b></div>
       </div>
       <button id="act" class="btn hidden">星图</button>
       <button id="boost" class="btn hidden">推进</button>
@@ -208,6 +219,8 @@
         </div>
         <div id="archiveRows" class="rows"></div>
       </div>
+      <div id="vignette"></div>
+      <div id="tidalFlash"></div>
       <div id="fade"></div>
       <div id="start">
         <h1>赛尔 · 瞭望舱</h1>

@@ -781,3 +781,173 @@ export function rockTexture(): THREE.Texture {
   g.putImageData(img, 0, 0);
   return tex(c);
 }
+
+/** 1024×512 polar-strip black-hole accretion disk texture (u = azimuth [0,1) tileable,
+ *  v = normalized radius 0 inner → 1 outer): fine radial shear lanes + logarithmic
+ *  spiral filaments + fbm plasma turbulence + incandescent inner → deep crimson-violet outer fade. */
+export function blackholeDiskTexture(seed = 113): THREE.Texture {
+  const W = 1024;
+  const H = 512;
+  const [c, g] = canvas(W, H);
+  const img = g.createImageData(W, H);
+
+  const nWarp = makeNoise(seed + 7, 16);
+  const nTurb = makeNoise(seed + 29, 32);
+  const nFine = makeNoise(seed + 61, 64);
+  const nRad = makeNoise(seed + 97, 8);
+
+  const ss = (a: number, b: number, x: number): number => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+  const mix3 = (a: [number, number, number], b: [number, number, number], t: number): [number, number, number] => [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+  ];
+
+  const colHot: [number, number, number] = [244, 249, 255];
+  const colGold: [number, number, number] = [255, 206, 132];
+  const colAmber: [number, number, number] = [238, 118, 48];
+  const colCrimson: [number, number, number] = [164, 48, 46];
+  const colViolet: [number, number, number] = [96, 44, 136];
+
+  for (let y = 0; y < H; y++) {
+    // v = 0 at inner edge (bottom of canvas, UV v=0), v = 1 at outer edge (top, UV v=1)
+    const v = 1 - (y + 0.5) / H;
+    const innerFade = ss(0.0, 0.075, v);
+    const outerFade = 1 - ss(0.72, 1.0, v);
+    const radialEnv = innerFade * outerFade;
+
+    // fine concentric Keplerian shear tracks (purely radial backbone)
+    const rN1 = nRad(2.3, v * 10.0);
+    const rN2 = nRad(5.7, v * 26.0);
+    const laneFine =
+      0.52 +
+      0.24 * Math.sin(v * 34.0 + rN1 * 4.5) +
+      0.16 * Math.sin(v * 82.0 + rN2 * 5.2) +
+      0.10 * Math.sin(v * 165.0 - rN1 * 6.0);
+
+    for (let x = 0; x < W; x++) {
+      const u = (x + 0.5) / W;
+      const w1 = nWarp(u * 16, v * 12) - 0.5;
+      const turb = nTurb(u * 32 + w1 * 2.2, v * 24 + w1 * 1.4);
+      const fine = nFine(u * 64 - w1 * 3.0, v * 48 + turb * 1.8);
+
+      // logarithmic spiral plasma arms (primary 4-arm + secondary 7-arm)
+      const logR = Math.log(v + 0.13);
+      const phi1 = u * Math.PI * 2 * 4 + 10.5 * logR + w1 * 3.2;
+      const phi2 = u * Math.PI * 2 * 7 + 16.0 * logR - turb * 3.4;
+      const sp1 = Math.pow(0.5 + 0.5 * Math.sin(phi1), 2.1);
+      const sp2 = Math.pow(0.5 + 0.5 * Math.sin(phi2), 2.8);
+      const spiral = sp1 * 0.65 + sp2 * 0.45;
+
+      // combine radial shear lanes + logarithmic spirals + plasma clumps
+      const streak = Math.max(0.08, laneFine) * (0.48 + 0.72 * spiral) * (0.62 + 0.55 * turb) * (0.78 + 0.34 * fine);
+      // extra incandescent hot ridge near ISCO inner edge
+      const innerRidge = Math.exp(-Math.pow((v - 0.11) / 0.09, 2)) * (0.75 + 0.45 * fine);
+      const energy = Math.min(1.35, (streak * 0.92 + innerRidge * 0.65) * radialEnv);
+
+      // temperature color ramp along radius (inner white-hot -> gold -> amber -> crimson -> violet outer mist)
+      let rgb: [number, number, number];
+      if (v < 0.18) {
+        rgb = mix3(colHot, colGold, ss(0.02, 0.18, v));
+      } else if (v < 0.48) {
+        rgb = mix3(colGold, colAmber, ss(0.18, 0.48, v));
+      } else if (v < 0.78) {
+        rgb = mix3(colAmber, colCrimson, ss(0.48, 0.78, v));
+      } else {
+        rgb = mix3(colCrimson, colViolet, ss(0.78, 0.98, v));
+      }
+      // push hot spiral crests brighter toward white-gold
+      const crest = ss(0.55, 1.08, energy);
+      rgb = mix3(rgb, colHot, crest * 0.48);
+
+      const intensity = Math.min(1, energy);
+      const idx = (y * W + x) * 4;
+      img.data[idx] = Math.min(255, rgb[0] * intensity);
+      img.data[idx + 1] = Math.min(255, rgb[1] * intensity);
+      img.data[idx + 2] = Math.min(255, rgb[2] * intensity);
+      img.data[idx + 3] = Math.min(255, Math.round(intensity * 255));
+    }
+  }
+
+  g.putImageData(img, 0, 0);
+  const t = tex(c);
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.ClampToEdgeWrapping;
+  return t;
+}
+
+/** 512×512 polar-strip gravitationally lensed starlight & nebula arc texture
+ *  (u = angle around Einstein ring, v = radial 1.15R → 1.60R). */
+export function blackholeLensTexture(seed = 131): THREE.Texture {
+  const W = 512;
+  const H = 512;
+  const [c, g] = canvas(W, H);
+  const img = g.createImageData(W, H);
+  const nNeb1 = makeNoise(seed + 3, 8);
+  const nNeb2 = makeNoise(seed + 41, 16);
+  const rnd = mulberry32(seed + 83);
+
+  const ss = (a: number, b: number, x: number): number => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+
+  // base tangentially sheared cosmic nebula wisps (deep cyan-blue & violet)
+  for (let y = 0; y < H; y++) {
+    const v = 1 - (y + 0.5) / H;
+    const radEnv = ss(0.0, 0.16, v) * (1 - ss(0.72, 1.0, v));
+    // peak brightness near the Einstein ring (~v=0.22..0.48)
+    const einstein = Math.exp(-Math.pow((v - 0.30) / 0.24, 2));
+    for (let x = 0; x < W; x++) {
+      const u = (x + 0.5) / W;
+      // stretched strongly along u (tangential) and finely striated along v (radial)
+      const w = nNeb1(u * 8, v * 14);
+      const w2 = nNeb2(u * 16 + w * 1.4, v * 30);
+      const wisp = Math.pow(ss(0.28, 0.88, w * 0.55 + w2 * 0.45), 1.45);
+      const str = (0.18 + 0.82 * wisp) * (0.42 + 0.58 * einstein) * radEnv;
+      const r = (92 + 110 * w2) * str;
+      const gr = (132 + 95 * w) * str;
+      const b = (225 + 30 * w2) * str;
+      const idx = (y * W + x) * 4;
+      img.data[idx] = Math.min(255, r);
+      img.data[idx + 1] = Math.min(255, gr);
+      img.data[idx + 2] = Math.min(255, b);
+      img.data[idx + 3] = Math.min(255, Math.round(str * 255));
+    }
+  }
+  g.putImageData(img, 0, 0);
+
+  // overlay curved/stretched background starlight arcs along tangential streaks
+  g.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 34; i++) {
+    const u0 = rnd();
+    const vPos = 0.12 + rnd() * 0.68;
+    const yPx = (1 - vPos) * H;
+    const spanPx = (28 + rnd() * 96) * (1.2 - vPos * 0.6); // stronger tangential stretch closer to horizon
+    const thick = 1.2 + rnd() * 2.6;
+    const huePick = rnd();
+    const col =
+      huePick < 0.45
+        ? 'rgba(182, 224, 255, 0.88)'
+        : huePick < 0.78
+          ? 'rgba(216, 186, 255, 0.82)'
+          : 'rgba(255, 232, 198, 0.78)';
+    for (const shift of [-W, 0, W]) {
+      const cx = u0 * W + shift;
+      const grd = g.createLinearGradient(cx - spanPx * 0.5, yPx, cx + spanPx * 0.5, yPx);
+      grd.addColorStop(0, 'rgba(0,0,0,0)');
+      grd.addColorStop(0.5, col);
+      grd.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grd;
+      g.fillRect(cx - spanPx * 0.5, yPx - thick * 0.5, spanPx, thick);
+    }
+  }
+
+  const t = tex(c);
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.ClampToEdgeWrapping;
+  return t;
+}

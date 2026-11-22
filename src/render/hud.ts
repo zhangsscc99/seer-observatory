@@ -65,14 +65,20 @@ export class Hud {
   private cardName = $('cardName');
   private cardMeta = $('cardMeta');
   private cardLog = $('cardLog');
+  private dilation = $('dilation');
+  private dilationVal = $('dilationVal');
+  private vignetteEl = $('vignette');
+  private tidalFlashEl = $('tidalFlash');
   private lastSpeed = -1;
   private lastEnergy = -1;
+  private lastDilation = '';
   private lastTip = '';
   private currentScene: Playable = 'cabin';
   private goalOverride: string | null = null;
   private targetPlanets: readonly PlanetDef[] = [];
   private selectedTargetId: string | null = null;
   private onPickTarget: (id: string) => void = () => {};
+  private onPreviewTarget: ((id: string) => void) | null = null;
   private cardTimer: number | undefined;
 
   constructor(h: HudHandlers, muted: boolean) {
@@ -173,9 +179,15 @@ export class Hud {
     this.energy.classList.toggle('low', depleted);
   }
 
-  setTargets(planets: readonly PlanetDef[], selectedId: string | null, onPick: (id: string) => void): void {
+  setTargets(
+    planets: readonly PlanetDef[],
+    selectedId: string | null,
+    onPick: (id: string) => void,
+    onPreview?: (id: string) => void,
+  ): void {
     this.targetPlanets = planets;
     this.onPickTarget = onPick;
+    this.onPreviewTarget = onPreview ?? null;
     const valid = selectedId !== null && planets.some((p) => p.id === selectedId);
     this.selectedTargetId = valid ? selectedId : (planets[0]?.id ?? null);
     this.renderTargets();
@@ -232,6 +244,7 @@ export class Hud {
         e.stopPropagation();
         this.selectedTargetId = p.id;
         this.renderTargets();
+        this.onPreviewTarget?.(p.id);
       });
       frag.appendChild(row);
     }
@@ -310,5 +323,19 @@ export class Hud {
 
   setFade(a: number): void {
     this.fadeEl.style.opacity = a <= 0 ? '0' : a.toFixed(3);
+  }
+
+  setTidal(timeScale: number, vignette: number, flash: number): void {
+    const showDil = timeScale > 1.01;
+    this.dilation.classList.toggle('hidden', !showDil);
+    if (showDil) {
+      const txt = `×${timeScale.toFixed(1)}`;
+      if (txt !== this.lastDilation) {
+        this.lastDilation = txt;
+        this.dilationVal.textContent = txt;
+      }
+    }
+    this.vignetteEl.style.opacity = vignette <= 0.002 ? '0' : Math.min(1, vignette).toFixed(3);
+    this.tidalFlashEl.style.opacity = flash <= 0.002 ? '0' : Math.min(1, flash).toFixed(3);
   }
 }

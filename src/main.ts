@@ -10,6 +10,7 @@ import { Robot } from './game/robot.ts';
 import { hazardEffect, SCAN, Scanner, type ScanTarget } from './game/scan.ts';
 import { forwardOf, Ship, SHIP } from './game/ship.ts';
 import { BINARY_STARS, PLANETS, planetById, SECTOR_RADIUS, solidBodies, SUN_DIR, type PlanetDef } from './game/space.ts';
+import { computeEjectTarget, TidalField } from './game/tidal.ts';
 import { Controls } from './input/controls.ts';
 import { buildCabin } from './render/cabin.ts';
 import { Hud } from './render/hud.ts';
@@ -17,7 +18,7 @@ import { buildRobot } from './render/robot.ts';
 import { buildShip } from './render/ship.ts';
 import { bakeSky, makeStars } from './render/sky.ts';
 import { RING_QUAT } from './render/rings.ts';
-import { buildSpace } from './render/space.ts';
+import { BH_DISK_QUAT, buildSpace } from './render/space.ts';
 
 declare global {
   interface Window {
@@ -62,6 +63,9 @@ const sfx = new Sfx();
 const controls = new Controls(canvas);
 let started = false;
 const scanner = new Scanner();
+const tidalField = new TidalField();
+const blackholePlanet = planetById('blackhole');
+let tidalFlash = 0;
 let archive = emptyArchive();
 let targetId: string | null = null;
 try {
@@ -109,6 +113,9 @@ const mode = new ModeMachine('cabin', {
       cam.pitch = 0.3;
       hud.setWarn(null, null);
       hud.setScan(null, 0, false);
+      tidalField.reset();
+      tidalFlash = 0;
+      hud.setTidal(1, 0, 0);
       sfx.play('dock');
     }
     applyScene(to);
@@ -141,11 +148,22 @@ const hud = new Hud(
   sfx.muted,
 );
 hud.setArchive(archive);
-hud.setTargets(PLANETS, targetId, selectTarget);
+hud.setTargets(PLANETS, targetId, selectTarget, previewTarget);
 space.setTarget(targetId);
 function applyTargetHolo(p: PlanetDef): void {
   if (p.kind === 'binary') cabin.setHoloColor(0xbfe0ff, 0xffb066);
+  else if (p.kind === 'blackhole') cabin.setHoloColor(0xf4ecff, 0x3b186e);
   else cabin.setHoloColor(p.colors[2]);
+}
+function previewTarget(id: string): void {
+  const p = planetById(id);
+  if (!p) return;
+  applyTargetHolo(p);
+  if (p.kind === 'blackhole' && p.hazard) {
+    hud.setWarn(hazardEffect(p.hazard).warn, p.hazard);
+  } else if (mode.mode === 'cabin') {
+    hud.setWarn(null, null);
+  }
 }
 
 const savedTargetPlanet = targetId === null ? undefined : planetById(targetId);
@@ -186,7 +204,7 @@ function selectTarget(id: string): void {
   space.setTarget(id);
   applyTargetHolo(p);
   hud.setGoal(`航行至 ${p.name} 执行扫描`);
-  hud.setTargets(PLANETS, id, selectTarget);
+  hud.setTargets(PLANETS, id, selectTarget, previewTarget);
   hud.closeTargets();
   sfx.play('confirm');
   tryLaunch();
@@ -203,7 +221,7 @@ function cabinInteract(): void {
     return;
   }
   if (nearPedestal(robot.x, robot.z)) {
-    hud.setTargets(PLANETS, targetId, selectTarget);
+    hud.setTargets(PLANETS, targetId, selectTarget, previewTarget);
     hud.toggleTargets();
   } else {
     sfx.play('deny');
@@ -330,6 +348,41 @@ function updateSpace(dt: number, active: boolean): void {
     hazard.energyMul,
   );
   if (ship.bumped && ship.speed > 20) sfx.play('bump');
+
+  // black-hole tidal field: time dilation, edge vignette, and crush auto-ejection
+  let tidalZone: 'safe' | 'hazard' | 'crush' = 'safe';
+  let tidalTension = 0;
+  let tidalScale = 1.0;
+  if (blackholePlanet) {
+    const bhDist = Math.hypot(
+      ship.pos.x - blackholePlanet.pos.x,
+      ship.pos.y - blackholePlanet.pos.y,
+      ship.pos.z - blackholePlanet.pos.z,
+    );
+    const step = tidalField.update(dt, bhDist, blackholePlanet.radius);
+    tidalZone = step.zone;
+    tidalTension = step.tension;
+    tidalScale = step.timeScale;
+    if (step.ejected) {
+      const targetPos = computeEjectTarget(ship.pos, blackholePlanet.pos, blackholePlanet.radius);
+      ship.pos.x = targetPos.x;
+      ship.pos.y = targetPos.y;
+      ship.pos.z = targetPos.z;
+      ship.speed = SHIP.cruise;
+      tidalFlash = 0.55;
+      space.triggerTidalPulse();
+      sfx.play('eject');
+    }
+  }
+  tidalFlash = Math.max(0, tidalFlash - dt * 1.15);
+  const vignette =
+    tidalZone === 'crush'
+      ? 0.42 + 0.3 * tidalTension
+      : tidalZone === 'hazard'
+        ? 0.08 + 0.24 * clamp((tidalScale - 1.2) / 1.2, 0, 1)
+        : 0;
+  hud.setTidal(tidalScale, vignette, tidalFlash);
+
   shipPos.set(ship.pos.x, ship.pos.y, ship.pos.z);
   shipView.group.position.copy(shipPos);
   shipView.group.rotation.set(ship.pitch, ship.yaw, ship.roll, 'YXZ');
@@ -358,8 +411,18 @@ function updateSpace(dt: number, active: boolean): void {
   hud.setFlight(ship.speed, ship.energy / SHIP.energyMax, ship.depleted);
   hud.setTip(ship.depleted ? '推进能量耗尽 · 充能中' : Math.hypot(ship.pos.x, ship.pos.y, ship.pos.z) > SECTOR_RADIUS ? '已到达星域边界 · 自动返航' : '');
   const selectedPlanet = targetId === null ? undefined : planetById(targetId);
-  const warnHazard = near?.hazard ?? (selectedPlanet?.kind === 'binary' ? selectedPlanet.hazard : undefined);
-  const warnText = near ? hazard.warn : warnHazard ? hazardEffect(warnHazard).warn : null;
+  const warnHazard =
+    tidalZone === 'crush'
+      ? 'tidal'
+      : near?.hazard ?? (selectedPlanet?.kind === 'binary' || selectedPlanet?.kind === 'blackhole' ? selectedPlanet.hazard : undefined);
+  const warnText =
+    tidalZone === 'crush'
+      ? `潮汐临界·引力张量 ${Math.round(tidalTension * 100)}% · 自动弹离就绪`
+      : near
+        ? hazard.warn
+        : warnHazard
+          ? hazardEffect(warnHazard).warn
+          : null;
   hud.setWarn(warnText, warnHazard ?? null);
 
   const events = scanner.update(dt, near, active && controls.act);
@@ -462,6 +525,14 @@ window.__seer = {
       // close approach inside 3.2R scan range (radiation HUD warn active) & edge of 2.6R dust veil
       dist = p.radius * 2.55;
       dir.set(0.48, 0.14, -0.86).normalize();
+    } else if (p.kind === 'blackhole') {
+      // 3/4 hero view ~18° above the tilted accretion disk plane, inside 3.2R hazard/scan range
+      // so photon ring + Doppler-beamed disk + lensed arch + ship rim light + time dilation HUD all frame together
+      dist = p.radius * 3.05;
+      const localView = new THREE.Vector3(0.32, Math.sin((18 * Math.PI) / 180), 0.90).normalize();
+      dir.copy(localView).applyQuaternion(BH_DISK_QUAT).normalize();
+      tidalField.reset();
+      tidalFlash = 0;
     } else if (p.kind === 'binary') {
       // 3.3R outer-side framing (away from twin-star midpoint, slight +Y lift) so both star discs + planet fit cleanly
       dist = p.radius * 3.3;
@@ -488,7 +559,9 @@ window.__seer = {
     ship.energy = SHIP.energyMax;
     cam.shipYaw = ship.yaw;
     cam.shipPitch = ship.pitch;
-    if (p.kind === 'binary') {
+    if (p.kind === 'blackhole') {
+      cam.focusFovV = aspect < 1 ? 82 : 64;
+    } else if (p.kind === 'binary') {
       // angular-separation / FOV check: ensure both stars stay inside the frame with margin on landscape & portrait
       const portrait = aspect < 1;
       const speedFrac = ship.speedFrac;

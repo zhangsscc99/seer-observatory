@@ -4,7 +4,7 @@
 // The AudioContext is created lazily in the first user gesture; the mute
 // flag is persisted in localStorage.
 
-export type SfxName = 'footstep' | 'prompt' | 'confirm' | 'launch' | 'dock' | 'bump' | 'deny';
+export type SfxName = 'footstep' | 'prompt' | 'confirm' | 'launch' | 'dock' | 'bump' | 'deny' | 'eject';
 
 const MUTE_KEY = 'seer.muted';
 
@@ -194,6 +194,11 @@ export class Sfx {
         break;
       case 'deny':
         this.tone('square', 196, 150, 0.14, 0.08);
+        break;
+      case 'eject': // clean gravitational repulsion wave (non-combat)
+        this.tone('sine', 180, 560, 0.45, 0.22);
+        this.tone('triangle', 360, 720, 0.35, 0.12, 0.05);
+        this.burst('bandpass', 320, 1800, 0.5, 0.24, 1.4);
         break;
     }
   }
