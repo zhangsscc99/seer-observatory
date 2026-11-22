@@ -96,6 +96,8 @@ test('hazardEffect: cold cuts energy regen; no hazard → neutral', () => {
   assert.equal(hazardEffect('tidal').warn, '潮汐力场·回充 ×0.7');
   assert.equal(hazardEffect('traffic').energyMul, 1.15);
   assert.equal(hazardEffect('traffic').warn, '环城航道·回充 ×1.15');
+  assert.equal(hazardEffect('magnetic').energyMul, 0.75);
+  assert.equal(hazardEffect('magnetic').warn, '强磁暴场·回充 ×0.75');
   const none = hazardEffect(undefined);
   assert.equal(none.energyMul, 1);
   assert.equal(none.warn, null);
@@ -113,6 +115,7 @@ test('sector data: every TARGET resolves, hazards assigned per design', () => {
   assert.equal(planetById('binary')!.hazard, 'photon');
   assert.equal(planetById('blackhole')!.hazard, 'tidal');
   assert.equal(planetById('ring-city')!.hazard, 'traffic');
+  assert.equal(planetById('magnetar')!.hazard, 'magnetic');
   assert.equal(scanResult('icer').resource, '氦-3 冰芯');
   assert.equal(scanResult('gas-storm').resource, '风暴氦芯');
   assert.equal(scanResult('red-giant').resource, '红巨星等离子');
@@ -125,5 +128,8 @@ test('sector data: every TARGET resolves, hazards assigned per design', () => {
   const rcRes = scanResult('ring-city');
   assert.equal(rcRes.resource, '环城通行密钥');
   assert.ok([...rcRes.log].length >= 40 && /停靠环/.test(rcRes.log) && /窗光排布/.test(rcRes.log) && /补给站位/.test(rcRes.log));
+  const magRes = scanResult('magnetar');
+  assert.equal(magRes.resource, '超导磁晶');
+  assert.ok([...magRes.log].length >= 40 && /磁力线弧/.test(magRes.log) && /强磁暴/.test(magRes.log) && /超导磁晶/.test(magRes.log));
   assert.ok(PLANETS.length === TARGETS.length);
 });

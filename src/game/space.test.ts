@@ -19,6 +19,7 @@ test('hazards follow the sector design table', () => {
   assert.equal(planetById('binary')!.hazard, 'photon');
   assert.equal(planetById('blackhole')!.hazard, 'tidal');
   assert.equal(planetById('ring-city')!.hazard, 'traffic');
+  assert.equal(planetById('magnetar')!.hazard, 'magnetic');
 });
 
 test('icer: ice-ring planet registered and scannable', () => {
@@ -149,6 +150,34 @@ test('ring-city: registered, non-overlapping, inside sector, traffic hazard and 
   const eff = hazardEffect(p.hazard);
   assert.equal(eff.energyMul, 1.15);
   assert.equal(eff.warn, '环城航道·回充 ×1.15');
+});
+
+test('magnetar: registered, non-overlapping, inside sector, forward reachable, magnetic hazard and scan log valid', () => {
+  const p = planetById('magnetar');
+  assert.ok(p);
+  assert.equal(p.kind, 'magnetar');
+  assert.equal(p.hazard, 'magnetic');
+  assert.ok(p.pos.z < 0, `magnetar should lie in forward (-z) hemisphere, got z=${p.pos.z}`);
+  assert.ok(TARGETS.includes('magnetar'));
+  assert.equal(TARGETS.filter((id) => id === 'magnetar').length, 1);
+  const distOrigin = Math.hypot(p.pos.x, p.pos.y, p.pos.z);
+  assert.ok(distOrigin <= SECTOR_RADIUS, `magnetar at ${distOrigin.toFixed(1)} > ${SECTOR_RADIUS}`);
+  for (const other of PLANETS) {
+    if (other.id === 'magnetar') continue;
+    const d = Math.hypot(p.pos.x - other.pos.x, p.pos.y - other.pos.y, p.pos.z - other.pos.z);
+    assert.ok(d > p.radius + other.radius + 100, `magnetar vs ${other.id}: ${d.toFixed(1)} <= ${p.radius + other.radius + 100}`);
+  }
+  const res = scanResult('magnetar');
+  assert.equal(res.resource, '超导磁晶');
+  assert.ok(res.amount >= 3 && res.amount <= 7, `amount ${res.amount}`);
+  const len = [...res.log].length;
+  assert.ok(len >= 40, `log length ${len} < 40`);
+  assert.match(res.log, /磁力线弧/);
+  assert.match(res.log, /强磁暴/);
+  assert.match(res.log, /超导磁晶/);
+  const eff = hazardEffect(p.hazard);
+  assert.equal(eff.energyMul, 0.75);
+  assert.equal(eff.warn, '强磁暴场·回充 ×0.75');
 });
 
 test('planet bounding spheres never overlap', () => {

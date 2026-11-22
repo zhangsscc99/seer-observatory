@@ -131,7 +131,10 @@ var PLANETS = [
   { id: "red-giant", name: "\u7EA2\u5DE8\u661F\u7CFB", pos: { x: -480, y: 160, z: 1020 }, radius: 280, hazard: "radiation", colors: [8002574, 15885337, 16773840], atmosphere: 16745528, kind: "red-giant", seed: 89 },
   { id: "binary", name: "\u53CC\u5B50\u661F\u57DF", pos: { x: 1100, y: -30, z: -520 }, radius: 135, hazard: "photon", colors: [3833813, 15764538, 15923199], atmosphere: 14280959, kind: "binary", seed: 97 },
   { id: "blackhole", name: "\u9ED1\u6D1E\u8FB9\u7F18 \xB7 \u5F25\u591C", pos: { x: -1080, y: 110, z: -520 }, radius: 105, hazard: "tidal", colors: [1838390, 9133302, 16052479], atmosphere: 12163327, kind: "blackhole", seed: 113 },
-  { id: "ring-city", name: "\u73AF\u5F62\u57CE\u5E02 \xB7 \u62FE\u5149", pos: { x: 260, y: -150, z: -1330 }, radius: 130, hazard: "traffic", colors: [1317412, 16757860, 15398143], atmosphere: 10475775, kind: "ring-city", seed: 131 }
+  { id: "ring-city", name: "\u73AF\u5F62\u57CE\u5E02 \xB7 \u62FE\u5149", pos: { x: 260, y: -150, z: -1330 }, radius: 130, hazard: "traffic", colors: [1317412, 16757860, 15398143], atmosphere: 10475775, kind: "ring-city", seed: 131 },
+  // 磁暴星域 · 岚弧: deep magnetized indigo-slate iron crust + vivid emerald-teal fissures & mint-cyan dipole plasma arcs
+  // (emerald-teal primary palette is visually distinct from all 6 prior worlds: ice-blue, orange-red, ochre, blue/orange, violet/gold, steel/amber)
+  { id: "magnetar", name: "\u78C1\u66B4\u661F\u57DF \xB7 \u5C9A\u5F27", pos: { x: -720, y: -120, z: -1020 }, radius: 100, hazard: "magnetic", colors: [1254973, 1632440, 12124144], atmosphere: 2683596, kind: "magnetar", seed: 149 }
 ];
 var TARGETS = PLANETS.map((p) => p.id);
 var SUN_DIR = (() => {

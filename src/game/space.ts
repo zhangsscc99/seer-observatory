@@ -19,7 +19,18 @@ export interface PlanetDef {
   colors: [number, number, number];
   atmosphere: number;
   /** texture recipe */
-  kind: 'ocean' | 'gas' | 'ice' | 'lava' | 'ice-ring' | 'gas-storm' | 'red-giant' | 'binary' | 'blackhole' | 'ring-city';
+  kind:
+    | 'ocean'
+    | 'gas'
+    | 'ice'
+    | 'lava'
+    | 'ice-ring'
+    | 'gas-storm'
+    | 'red-giant'
+    | 'binary'
+    | 'blackhole'
+    | 'ring-city'
+    | 'magnetar';
   seed: number;
 }
 
@@ -45,6 +56,9 @@ export const PLANETS: readonly PlanetDef[] = [
   { id: 'binary', name: '双子星域', pos: { x: 1100, y: -30, z: -520 }, radius: 135, hazard: 'photon', colors: [0x3a7fd5, 0xf08c3a, 0xf2f7ff], atmosphere: 0xd9e8ff, kind: 'binary', seed: 97 },
   { id: 'blackhole', name: '黑洞边缘 · 弥夜', pos: { x: -1080, y: 110, z: -520 }, radius: 105, hazard: 'tidal', colors: [0x1c0d36, 0x8b5cf6, 0xf4f0ff], atmosphere: 0xb998ff, kind: 'blackhole', seed: 113 },
   { id: 'ring-city', name: '环形城市 · 拾光', pos: { x: 260, y: -150, z: -1330 }, radius: 130, hazard: 'traffic', colors: [0x141a24, 0xffb464, 0xeaf4ff], atmosphere: 0x9fd8ff, kind: 'ring-city', seed: 131 },
+  // 磁暴星域 · 岚弧: deep magnetized indigo-slate iron crust + vivid emerald-teal fissures & mint-cyan dipole plasma arcs
+  // (emerald-teal primary palette is visually distinct from all 6 prior worlds: ice-blue, orange-red, ochre, blue/orange, violet/gold, steel/amber)
+  { id: 'magnetar', name: '磁暴星域 · 岚弧', pos: { x: -720, y: -120, z: -1020 }, radius: 100, hazard: 'magnetic', colors: [0x13263d, 0x18e8b8, 0xb8fff0], atmosphere: 0x28f2cc, kind: 'magnetar', seed: 149 },
 ];
 
 /** twin distant stars of the binary system (cool-white primary + warm-orange companion) */
