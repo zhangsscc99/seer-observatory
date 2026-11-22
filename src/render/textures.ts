@@ -1110,3 +1110,183 @@ export function ringCityCoreTexture(seed = 131): THREE.Texture {
   t.wrapT = THREE.ClampToEdgeWrapping;
   return t;
 }
+
+/** Procedural 1024×512 equirectangular PBR maps for the magnetar (`magnetar`):
+ *  - `map`: dark magnetized slate-indigo iron crust shattered into Voronoi starquake plates
+ *    (kept bright enough that directional + IBL lighting reads clearly with zero dead-black crush)
+ *  - `emissive`: glowing emerald-teal / mint-cyan tectonic fracture seams + polar magnetic
+ *    footpoint crowns where the 3D dipole field-line arcs anchor into the crust
+ *  - `rough`: metallic ridges (low roughness ~0.26) vs fractured basins (~0.68) */
+export function magnetarTextures(p: PlanetDef): { map: THREE.Texture; emissive: THREE.Texture; rough: THREE.Texture } {
+  const W = 1024;
+  const H = 512;
+  const [cMap, gMap] = canvas(W, H);
+  const [cEm, gEm] = canvas(W, H);
+  const [cRgh, gRgh] = canvas(W, H);
+  const imgMap = gMap.createImageData(W, H);
+  const imgEm = gEm.createImageData(W, H);
+  const imgRgh = gRgh.createImageData(W, H);
+
+  const nWarp = makeNoise(p.seed + 13, 16);
+  const nFbm = makeNoise(p.seed + 41, 32);
+  const nFine = makeNoise(p.seed + 83, 64);
+
+  const cols = p.colors.map((h) => [(h >> 16) & 255, (h >> 8) & 255, h & 255]);
+  const crustDeep: [number, number, number] = [28, 52, 82];
+  const crustMid: [number, number, number] = [48, 86, 122];
+  const crustRidge: [number, number, number] = [88, 146, 178];
+  const crackTeal: [number, number, number] = [cols[1][0], cols[1][1], cols[1][2]];
+  const crackHot: [number, number, number] = [cols[2][0], cols[2][1], cols[2][2]];
+  const polarAqua: [number, number, number] = [110, 248, 232];
+
+  const mix3 = (a: number[], b: number[], t: number): [number, number, number] => [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+  ];
+  const ss = (a: number, b: number, x: number): number => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+
+  // Two-scale tileable-in-x Voronoi fracture grid (coarse tectonic plates + fine crystal shatter web)
+  const makeGrid = (nx: number, ny: number, salt: number): { px: Float32Array; py: Float32Array; nx: number; ny: number } => {
+    const px = new Float32Array(nx * ny);
+    const py = new Float32Array(nx * ny);
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        const idx = j * nx + i;
+        px[idx] = i + 0.14 + 0.72 * vhash(i * 23 + salt, j * 37 + salt);
+        py[idx] = j + 0.14 + 0.72 * vhash(i * 41 + salt, j * 19 + salt);
+      }
+    }
+    return { px, py, nx, ny };
+  };
+  const gCoarse = makeGrid(14, 7, p.seed * 5 + 11);
+  const gFine = makeGrid(42, 21, p.seed * 11 + 67);
+
+  const voronoi = (
+    u: number,
+    v: number,
+    grid: { px: Float32Array; py: Float32Array; nx: number; ny: number },
+  ): [number, number] => {
+    const { px, py, nx, ny } = grid;
+    const gx = (((u % 1) + 1) % 1) * nx;
+    const gy = Math.max(0.001, Math.min(ny - 0.001, v * ny));
+    const ci = Math.floor(gx);
+    const cj = Math.floor(gy);
+    let f1 = 1e9;
+    let f2 = 1e9;
+    for (let dj = -1; dj <= 1; dj++) {
+      const jj = cj + dj;
+      if (jj < 0 || jj >= ny) continue;
+      for (let di = -1; di <= 1; di++) {
+        const ii = (((ci + di) % nx) + nx) % nx;
+        const idx = jj * nx + ii;
+        let dx = gx - px[idx];
+        if (dx > nx * 0.5) dx -= nx;
+        else if (dx < -nx * 0.5) dx += nx;
+        const dy = gy - py[idx];
+        const d = dx * dx + dy * dy;
+        if (d < f1) {
+          f2 = f1;
+          f1 = d;
+        } else if (d < f2) {
+          f2 = d;
+        }
+      }
+    }
+    return [Math.sqrt(f2) - Math.sqrt(f1), Math.sqrt(f1)];
+  };
+
+  for (let y = 0; y < H; y++) {
+    const lat = (y + 0.5) / H; // 0 = north magnetic pole, 1 = south magnetic pole
+    const poleDist = Math.min(lat, 1 - lat); // 0 at poles, 0.5 at equator
+    // Two polar magnetic footpoint crowns matching outer (L~2.4, θ~40° -> lat~0.22) and inner (L~1.8, θ~48° -> lat~0.27) dipole rings
+    const crownOuter = Math.exp(-Math.pow((poleDist - 0.215) / 0.026, 2));
+    const crownInner = Math.exp(-Math.pow((poleDist - 0.275) / 0.022, 2));
+    const polarCapGlow = Math.exp(-Math.pow(poleDist / 0.14, 2));
+
+    for (let x = 0; x < W; x++) {
+      const uNorm = (x + 0.5) / W;
+      const wx = (nWarp(uNorm * 16, lat * 8) - 0.5) * 0.036;
+      const wy = (nWarp(uNorm * 16 + 4.7, lat * 8 + 3.1) - 0.5) * 0.032;
+      const uW = uNorm + wx;
+      const vW = Math.max(0.002, Math.min(0.998, lat + wy));
+
+      const [edge1, r1] = voronoi(uW, vW, gCoarse);
+      const [edge2] = voronoi(uW + wx * 0.35, Math.max(0.002, Math.min(0.998, vW + wy * 0.35)), gFine);
+
+      const fbm = nFbm(uNorm * 32, lat * 16);
+      const fine = nFine(uNorm * 64, lat * 32);
+
+      // Meridian magnetic flux striations etched into the magnetized iron crust
+      const stria = 0.5 + 0.5 * Math.sin(uNorm * Math.PI * 2 * 24 + (fbm - 0.5) * 3.4);
+
+      // Crust albedo: dark slate-indigo metallic plates with polished bevel ridges along seams
+      const plateShade = ss(0.18, 0.82, fbm * 0.6 + fine * 0.25 + stria * 0.15);
+      let albedo = mix3(crustDeep, crustMid, plateShade);
+      const ridgeBevel = ss(0.24, 0.06, edge1) * (0.5 + 0.5 * fine);
+      albedo = mix3(albedo, crustRidge, ridgeBevel * 0.65);
+      // Slight polar mineral frost tint near magnetic crowns
+      albedo = mix3(albedo, polarAqua, (crownOuter * 0.32 + crownInner * 0.24 + polarCapGlow * 0.22) * (0.65 + 0.35 * fbm));
+
+      // Emissive tectonic starquake fissures (strongest at sharp Voronoi seams + active junctions)
+      const mainCrack = ss(0.105, 0.014, edge1 + (fbm - 0.5) * 0.025);
+      const fineCrack = ss(0.075, 0.012, edge2 + (fine - 0.5) * 0.02) * (0.45 + 0.55 * ss(0.35, 0.85, fbm));
+      const junction = ss(0.18, 0.03, edge1) * ss(0.16, 0.03, edge2);
+      // Modulate fissures slightly stronger in active mid/polar belts while keeping equatorial rifts clearly visible
+      const activeBelt = 0.58 + 0.42 * ss(0.45, 0.15, poleDist);
+      const crackIntensity = Math.min(1, (mainCrack * 0.92 + fineCrack * 0.46 + junction * 0.55) * activeBelt);
+
+      // Polar magnetic footpoint rings with 8 azimuthal plasma anchor nodes matching the 8-fold dipole arc symmetry
+      const nodeWaveOuter = 0.55 + 0.45 * Math.pow(0.5 + 0.5 * Math.cos((uNorm * 8 + 0.5) * Math.PI * 2), 1.8);
+      const nodeWaveInner = 0.55 + 0.45 * Math.pow(0.5 + 0.5 * Math.cos(uNorm * 8 * Math.PI * 2), 1.8);
+      const crownGlow = Math.min(
+        1,
+        (crownOuter * nodeWaveOuter * 0.92 + crownInner * nodeWaveInner * 0.78) * (0.72 + 0.28 * fine) +
+          polarCapGlow * (0.18 + 0.24 * mainCrack + 0.16 * stria),
+      );
+
+      const emEnergy = Math.min(1.2, crackIntensity * 0.95 + crownGlow * 0.95);
+      const emCol = mix3(crackTeal, crackHot, ss(0.42, 0.98, emEnergy));
+      // Also tint albedo slightly along bright fissures so lit seams stay mineralized
+      albedo = mix3(albedo, crackTeal, crackIntensity * 0.48);
+
+      // Metallic roughness: smooth specular on crystalline plate domes & ridges, rougher in textured troughs
+      const domeSmooth = ss(0.55, 0.12, r1) * 0.14;
+      const roughVal = Math.max(0.24, Math.min(0.74, 0.34 + (1 - fbm) * 0.32 - ridgeBevel * 0.14 - domeSmooth));
+      const rByte = Math.round(roughVal * 255);
+
+      const idx = (y * W + x) * 4;
+      imgMap.data[idx] = Math.min(255, albedo[0]);
+      imgMap.data[idx + 1] = Math.min(255, albedo[1]);
+      imgMap.data[idx + 2] = Math.min(255, albedo[2]);
+      imgMap.data[idx + 3] = 255;
+
+      const emScale = Math.min(1, emEnergy);
+      imgEm.data[idx] = Math.min(255, emCol[0] * emScale);
+      imgEm.data[idx + 1] = Math.min(255, emCol[1] * emScale);
+      imgEm.data[idx + 2] = Math.min(255, emCol[2] * emScale);
+      imgEm.data[idx + 3] = 255;
+
+      imgRgh.data[idx] = rByte;
+      imgRgh.data[idx + 1] = rByte;
+      imgRgh.data[idx + 2] = rByte;
+      imgRgh.data[idx + 3] = 255;
+    }
+  }
+
+  gMap.putImageData(imgMap, 0, 0);
+  gEm.putImageData(imgEm, 0, 0);
+  gRgh.putImageData(imgRgh, 0, 0);
+
+  const map = tex(cMap);
+  const emissive = tex(cEm);
+  const rough = tex(cRgh, false);
+  for (const t of [map, emissive, rough]) {
+    t.wrapS = THREE.RepeatWrapping;
+    t.wrapT = THREE.ClampToEdgeWrapping;
+  }
+  return { map, emissive, rough };
+}

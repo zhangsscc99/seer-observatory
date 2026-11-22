@@ -12,6 +12,7 @@ import {
   blackholeDiskTexture,
   blackholeLensTexture,
   flareTexture,
+  magnetarTextures,
   planetTexture,
   radialTexture,
   redGiantTexture,
@@ -374,6 +375,9 @@ export const BH_SPIN_AXIS = new THREE.Vector3(0, 1, 0).applyQuaternion(BH_DISK_Q
 
 /** tilted orbital ring-city plane orientation in world space (~16° tilt) */
 export const RING_CITY_QUAT = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.22, -0.18, 0.14));
+
+/** tilted magnetar magnetic dipole orientation in world space (~23° oblique rotator tilt) */
+export const MAGNETAR_QUAT = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.16, 0.22, -0.36));
 
 // thin artificial shield shell (1.00R–1.04R, FrontSide, pale blue, alpha <= 0.18, no natural haze)
 const RING_SHIELD_FRAG = /* glsl */ `
@@ -1726,6 +1730,414 @@ function buildRingCity(p: PlanetDef): THREE.Group {
   return g;
 }
 
+/** Magnetar (`magnetar`): PBR magnetized starquake-crust core (MeshStandardMaterial + onBeforeCompile
+ *  with directional/IBL shading, animated emerald-teal crustal fissures, Fresnel rim & guaranteed >=0.09
+ *  night-side base) + signature 3D dipole magnetic field-line arc cage (16 sculpted r = L·R·sin²θ
+ *  flux tubes in 2 volumetric core+sheath draw calls with streaming Alfvén plasma pulses) + polar
+ *  magnetic footpoint plasma rings + outer additive Fresnel magnetosphere halo + 360 dipole-shell motes.
+ *  Strictly follows the rendering ladder: zero RawShaderMaterial and zero post-processing. */
+function buildMagnetar(p: PlanetDef): THREE.Group {
+  const g = new THREE.Group();
+  g.position.set(p.pos.x, p.pos.y, p.pos.z);
+
+  const R = p.radius;
+  const rnd = mulberry32(p.seed + 71);
+  const atmoCol = new THREE.Color(p.atmosphere);
+  const magUniforms = {
+    uTime: { value: 0 },
+    uSun: { value: sunDir },
+    uAtmo: { value: atmoCol },
+  };
+
+  // Tilted magnetic dipole frame (+Y = north magnetic pole)
+  const tilt = new THREE.Group();
+  tilt.quaternion.copy(MAGNETAR_QUAT);
+  g.add(tilt);
+
+  // Co-rotating crust + frozen-in dipole magnetosphere ('surface' spins slowly in space.update)
+  const surface = new THREE.Group();
+  surface.name = 'surface';
+  tilt.add(surface);
+
+  // 1) PBR magnetized iron-crust core (MeshStandardMaterial + onBeforeCompile)
+  const texSet = magnetarTextures(p);
+  const crustMat = new THREE.MeshStandardMaterial({
+    map: texSet.map,
+    emissiveMap: texSet.emissive,
+    emissive: new THREE.Color(0xffffff),
+    emissiveIntensity: 1.65,
+    roughnessMap: texSet.rough,
+    roughness: 1.0,
+    metalness: 0.62,
+    envMapIntensity: 1.55,
+  });
+  crustMat.customProgramCacheKey = () => 'magnetar-crust-v1';
+  crustMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = magUniforms.uTime;
+    shader.uniforms.uSun = magUniforms.uSun;
+    shader.uniforms.uAtmo = magUniforms.uAtmo;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vMagW;\nvarying vec3 vMagN;\nvarying vec3 vMagLocal;')
+      .replace(
+        '#include <project_vertex>',
+        'vMagLocal = normalize(position);\nvMagN = normalize(mat3(modelMatrix) * normal);\nvMagW = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <project_vertex>',
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        '#include <common>\nuniform float uTime;\nuniform vec3 uSun;\nuniform vec3 uAtmo;\nvarying vec3 vMagW;\nvarying vec3 vMagN;\nvarying vec3 vMagLocal;',
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        // Animated magnetic surge waves pulsing pole-to-equator through crustal starquake fissures
+        float magWave = 0.84 + 0.24 * sin(abs(vMagLocal.y) * 14.0 - uTime * 2.1 + atan(vMagLocal.z, vMagLocal.x) * 2.0);
+        totalEmissiveRadiance *= magWave;`,
+      )
+      .replace(
+        'vec3 outgoingLight = totalDiffuse + totalSpecular + totalEmissiveRadiance;',
+        `// Guarantee readable >= 0.09 night-side crust base (never dead black) + view Fresnel rim
+        vec3 magFloor = max(diffuseColor.rgb, vec3(0.09, 0.13, 0.18)) * vec3(0.28, 0.36, 0.44);
+        vec3 safeDiffuse = max(totalDiffuse, magFloor);
+        vec3 magN = normalize(vMagN);
+        vec3 magV = normalize(cameraPosition - vMagW);
+        float magFres = pow(1.0 - max(dot(magN, magV), 0.0), 2.75);
+        float magSunLit = smoothstep(-0.35, 0.35, dot(magN, uSun));
+        vec3 magRim = uAtmo * magFres * mix(0.32, 0.96, magSunLit);
+        vec3 outgoingLight = safeDiffuse + totalSpecular + totalEmissiveRadiance + magRim;`,
+      );
+  };
+  const coreMesh = new THREE.Mesh(new THREE.SphereGeometry(R, 72, 48), crustMat);
+  surface.add(coreMesh);
+
+  // 2) Signature visual landmark: 3D Dipole Magnetic Field-Line Arc Cage
+  //    16 sculpted flux tubes following exact dipole curves r(θ) = L·R·sin²(θ) across two shells:
+  //    8 inner high-intensity arcs (L=1.74..1.94) + 8 outer sweeping wing arcs (L=2.28..2.60).
+  //    Built as 2 merged BufferGeometries (core filament + soft volumetric plasma sheath = 2 draw calls).
+  interface ArcSpec {
+    L: number;
+    az: number;
+    twist: number;
+    coreR: number;
+    phase: number;
+    shell: number; // 0 = inner emerald-cyan, 1 = outer electric aqua-cyan
+  }
+  const arcSpecs: ArcSpec[] = [];
+  for (let i = 0; i < 8; i++) {
+    arcSpecs.push({
+      L: 1.74 + (i % 2) * 0.14 + (rnd() - 0.5) * 0.08,
+      az: (i / 8) * Math.PI * 2 + (rnd() - 0.5) * 0.14,
+      twist: (i % 2 === 0 ? 1 : -1) * (0.12 + rnd() * 0.08),
+      coreR: R * 0.0165,
+      phase: rnd() * Math.PI * 2,
+      shell: 0,
+    });
+  }
+  for (let i = 0; i < 8; i++) {
+    arcSpecs.push({
+      L: 2.30 + (i % 2) * 0.22 + (rnd() - 0.5) * 0.12,
+      az: ((i + 0.5) / 8) * Math.PI * 2 + (rnd() - 0.5) * 0.12,
+      twist: (i % 2 === 0 ? -1 : 1) * (0.16 + rnd() * 0.10),
+      coreR: R * 0.019,
+      phase: rnd() * Math.PI * 2,
+      shell: 1,
+    });
+  }
+
+  const buildDipoleTubes = (radiusMul: number): THREE.BufferGeometry => {
+    const lenSegs = 44;
+    const radSegs = 6;
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const uvs: number[] = [];
+    const metas: number[] = [];
+    const indices: number[] = [];
+    let vBase = 0;
+
+    const pt = new THREE.Vector3();
+    const prevPt = new THREE.Vector3();
+    const nextPt = new THREE.Vector3();
+    const tan = new THREE.Vector3();
+    const n1 = new THREE.Vector3();
+    const n2 = new THREE.Vector3();
+    const radDir = new THREE.Vector3();
+    const azBinorm = new THREE.Vector3();
+
+    const evalDipole = (out: THREE.Vector3, spec: ArcSpec, u: number): void => {
+      // Footpoints root at r = 0.95R inside the crust so arcs emerge cleanly without floating gaps
+      const sin0 = Math.sqrt(Math.min(0.95, 0.95 / spec.L));
+      const th0 = Math.asin(sin0);
+      const th = th0 + (Math.PI - 2 * th0) * u;
+      const sinT = Math.sin(th);
+      const cosT = Math.cos(th);
+      const r = spec.L * R * sinT * sinT;
+      // Subtle magnetospheric shear twist along the dipole curve
+      const phi = spec.az + spec.twist * cosT;
+      out.set(r * sinT * Math.cos(phi), r * cosT, r * sinT * Math.sin(phi));
+    };
+
+    for (const spec of arcSpecs) {
+      for (let i = 0; i <= lenSegs; i++) {
+        const u = i / lenSegs;
+        evalDipole(pt, spec, u);
+        evalDipole(prevPt, spec, Math.max(0, u - 0.015));
+        evalDipole(nextPt, spec, Math.min(1, u + 0.015));
+        tan.subVectors(nextPt, prevPt).normalize();
+
+        // Construct smooth twist-free cross-section basis anchored to the meridian plane
+        radDir.copy(pt).normalize();
+        azBinorm.crossVectors(tan, radDir);
+        if (azBinorm.lengthSq() < 1e-5) azBinorm.set(1, 0, 0);
+        azBinorm.normalize();
+        n1.crossVectors(azBinorm, tan).normalize();
+        n2.copy(azBinorm);
+
+        // Tube tapers tighter at compressed polar footpoints, fuller along the sweeping equatorial arch
+        const archSin = Math.sin(u * Math.PI);
+        const tubeR = spec.coreR * radiusMul * (0.68 + 0.48 * Math.pow(archSin, 0.65));
+
+        for (let j = 0; j <= radSegs; j++) {
+          const v = j / radSegs;
+          const ang = v * Math.PI * 2;
+          const ca = Math.cos(ang);
+          const sa = Math.sin(ang);
+          const nx = n1.x * ca + n2.x * sa;
+          const ny = n1.y * ca + n2.y * sa;
+          const nz = n1.z * ca + n2.z * sa;
+          positions.push(pt.x + nx * tubeR, pt.y + ny * tubeR, pt.z + nz * tubeR);
+          normals.push(nx, ny, nz);
+          uvs.push(u, v);
+          metas.push(spec.phase, spec.shell, spec.L / 2.6);
+        }
+        if (i < lenSegs) {
+          const ringCols = radSegs + 1;
+          for (let j = 0; j < radSegs; j++) {
+            const a = vBase + i * ringCols + j;
+            const b = a + 1;
+            const c = a + ringCols;
+            const d = c + 1;
+            indices.push(a, c, b, b, c, d);
+          }
+        }
+      }
+      vBase += (lenSegs + 1) * (radSegs + 1);
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.setAttribute('aArcMeta', new THREE.Float32BufferAttribute(metas, 3));
+    geo.setIndex(indices);
+    return geo;
+  };
+
+  const makeArcMat = (cacheKey: string, isSheath: boolean): THREE.MeshBasicMaterial => {
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: isSheath ? 0.56 : 0.96,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.FrontSide,
+    });
+    mat.customProgramCacheKey = () => cacheKey;
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = magUniforms.uTime;
+      shader.uniforms.uIsSheath = { value: isSheath ? 1.0 : 0.0 };
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nattribute vec3 aArcMeta;\nvarying vec2 vArcUv;\nvarying vec3 vArcMeta;\nvarying vec3 vArcW;\nvarying vec3 vArcN;',
+        )
+        .replace(
+          '#include <project_vertex>',
+          `vArcUv = uv;
+          vArcMeta = aArcMeta;
+          vArcN = normalize(mat3(modelMatrix) * normal);
+          vArcW = (modelMatrix * vec4(transformed, 1.0)).xyz;
+          #include <project_vertex>`,
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform float uTime;\nuniform float uIsSheath;\nvarying vec2 vArcUv;\nvarying vec3 vArcMeta;\nvarying vec3 vArcW;\nvarying vec3 vArcN;',
+        )
+        .replace(
+          'vec4 diffuseColor = vec4( diffuse, opacity );',
+          `vec3 arcN = normalize(vArcN);
+          vec3 arcV = normalize(cameraPosition - vArcW);
+          float ndv = abs(dot(arcN, arcV));
+          // Soft radial falloff on outer plasma sheath; crisp bright core on inner filament
+          float profile = mix(pow(ndv, 0.72), pow(ndv, 1.95), uIsSheath);
+          float u = vArcUv.x;
+          float phase = vArcMeta.x;
+          float shell = vArcMeta.y;
+          // Streaming Alfvén plasma pulses flowing along the dipole arc from pole to pole
+          float dirSign = shell < 0.5 ? 1.0 : -1.0;
+          float p1 = 0.5 + 0.5 * sin(u * 18.85 - dirSign * uTime * 2.15 + phase);
+          float p2 = 0.5 + 0.5 * sin(u * 34.56 + dirSign * uTime * 1.45 + phase * 1.7 + vArcUv.y * 6.283);
+          float knot = pow(p1, 2.4) * 0.65 + pow(p2, 3.0) * 0.35;
+          // Intensified magnetic flux density near polar footpoints (u near 0 or 1)
+          float foot = exp(-pow(u / 0.14, 2.0)) + exp(-pow((1.0 - u) / 0.14, 2.0));
+          float endsMask = smoothstep(0.0, 0.04, u) * smoothstep(1.0, 0.96, u);
+          float breathe = 0.86 + 0.14 * sin(uTime * 1.3 + phase);
+          // Palette: inner shell vivid emerald-teal, outer shell luminous electric cyan-aqua, crests ice-mint white
+          vec3 innerCol = vec3(0.10, 0.95, 0.76);
+          vec3 outerCol = vec3(0.16, 0.86, 1.00);
+          vec3 hotCol = vec3(0.82, 1.00, 0.96);
+          vec3 baseCol = mix(innerCol, outerCol, shell);
+          vec3 col = mix(baseCol, hotCol, clamp(knot * 0.68 + foot * 0.55, 0.0, 1.0));
+          float gain = mix(1.42, 0.58, uIsSheath) * (0.58 + 0.68 * knot + 0.55 * foot) * breathe;
+          vec4 diffuseColor = vec4(col * gain, opacity * profile * endsMask);`,
+        );
+    };
+    return mat;
+  };
+
+  const arcCoreMesh = new THREE.Mesh(buildDipoleTubes(1.0), makeArcMat('magnetar-arc-core-v1', false));
+  arcCoreMesh.name = 'dipoleArcsCore';
+  arcCoreMesh.renderOrder = 3;
+
+  const arcGlowMesh = new THREE.Mesh(buildDipoleTubes(2.95), makeArcMat('magnetar-arc-sheath-v1', true));
+  arcGlowMesh.name = 'dipoleArcsSheath';
+  arcGlowMesh.renderOrder = 2;
+
+  surface.add(arcCoreMesh, arcGlowMesh);
+
+  // 3) Polar magnetic footpoint plasma crowns (4 additive rings grounding the inner/outer arcs at ±Y poles)
+  const crownGeo = new THREE.TorusGeometry(1, 0.022, 8, 64);
+  crownGeo.rotateX(Math.PI / 2);
+  const crownMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0x6cffe6).multiplyScalar(1.35),
+    transparent: true,
+    opacity: 0.78,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  crownMat.customProgramCacheKey = () => 'magnetar-crown-v1';
+  crownMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = magUniforms.uTime;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vCrUv;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCrUv = uv;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nvarying vec2 vCrUv;')
+      .replace(
+        'vec4 diffuseColor = vec4( diffuse, opacity );',
+        `float ripple = 0.68 + 0.32 * sin(vCrUv.x * 50.265 - uTime * 2.6);
+        vec4 diffuseColor = vec4(diffuse * ripple, opacity * (0.65 + 0.35 * ripple));`,
+      );
+  };
+  const crowns = new THREE.InstancedMesh(crownGeo, crownMat, 4);
+  const cm = new THREE.Matrix4();
+  const cq = new THREE.Quaternion();
+  const cPos = new THREE.Vector3();
+  const cSc = new THREE.Vector3();
+  // Match polar latitudes of outer (L≈2.42, θ≈39°) and inner (L≈1.80, θ≈47°) footpoints
+  const crownSpecs: [number, number][] = [
+    [Math.asin(Math.sqrt(0.95 / 2.42)), 1],
+    [Math.asin(Math.sqrt(0.95 / 2.42)), -1],
+    [Math.asin(Math.sqrt(0.95 / 1.80)), 1],
+    [Math.asin(Math.sqrt(0.95 / 1.80)), -1],
+  ];
+  crownSpecs.forEach(([th, ySign], idx) => {
+    const rad = R * 1.015 * Math.sin(th);
+    const y = ySign * R * 1.015 * Math.cos(th);
+    cm.compose(cPos.set(0, y, 0), cq, cSc.set(rad, rad, rad));
+    crowns.setMatrixAt(idx, cm);
+  });
+  crowns.instanceMatrix.needsUpdate = true;
+  surface.add(crowns);
+
+  // 4) Outer additive Fresnel magnetospheric halo shell (MeshBasicMaterial + onBeforeCompile, BackSide)
+  const haloScale = 1.15;
+  const haloEdge = Math.sqrt(1 - 1 / (haloScale * haloScale));
+  const haloMat = new THREE.MeshBasicMaterial({
+    color: atmoCol,
+    side: THREE.BackSide,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  haloMat.customProgramCacheKey = () => 'magnetar-halo-v1';
+  haloMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uSun = magUniforms.uSun;
+    shader.uniforms.uEdge = { value: haloEdge };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vMhN;\nvarying vec3 vMhW;')
+      .replace(
+        '#include <project_vertex>',
+        'vMhN = normalize(mat3(modelMatrix) * normal);\nvMhW = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <project_vertex>',
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform vec3 uSun;\nuniform float uEdge;\nvarying vec3 vMhN;\nvarying vec3 vMhW;')
+      .replace(
+        'vec4 diffuseColor = vec4( diffuse, opacity );',
+        `vec3 n = normalize(vMhN);
+        vec3 v = normalize(cameraPosition - vMhW);
+        float d = clamp(-dot(n, v) / uEdge, 0.0, 1.0);
+        float tight = pow(d, 4.2) * 0.72;
+        float wide = pow(d, 1.9) * 0.28;
+        float lit = mix(0.42, 1.0, smoothstep(-0.35, 0.35, dot(n, uSun)));
+        vec3 haloTint = mix(diffuse, vec3(0.68, 1.0, 0.96), pow(d, 4.0) * 0.45);
+        vec4 diffuseColor = vec4(haloTint * (tight + wide) * lit, 1.0);`,
+      );
+  };
+  const haloMesh = new THREE.Mesh(new THREE.SphereGeometry(R * haloScale, 48, 32), haloMat);
+  haloMesh.renderOrder = 2;
+  g.add(haloMesh);
+
+  // 5) 360 charged-particle motes trapped along the dipole shells (1.45R..2.75R)
+  const moteCount = 360;
+  const mPos = new Float32Array(moteCount * 3);
+  const mCol = new Float32Array(moteCount * 3);
+  for (let i = 0; i < moteCount; i++) {
+    const L = 1.45 + Math.pow(rnd(), 0.85) * 1.3;
+    const th0 = Math.asin(Math.sqrt(Math.min(0.95, 1.04 / L)));
+    const th = th0 + rnd() * (Math.PI - 2 * th0);
+    const phi = rnd() * Math.PI * 2;
+    const sinT = Math.sin(th);
+    const r = L * R * sinT * sinT * (0.94 + rnd() * 0.12);
+    mPos[i * 3] = r * sinT * Math.cos(phi);
+    mPos[i * 3 + 1] = r * Math.cos(th);
+    mPos[i * 3 + 2] = r * sinT * Math.sin(phi);
+    const bright = 0.58 + rnd() * 0.42;
+    const aquaBias = rnd();
+    mCol[i * 3] = (0.18 + 0.52 * aquaBias) * bright;
+    mCol[i * 3 + 1] = (0.92 + 0.08 * aquaBias) * bright;
+    mCol[i * 3 + 2] = (0.80 + 0.20 * aquaBias) * bright;
+  }
+  const moteGeo = new THREE.BufferGeometry();
+  moteGeo.setAttribute('position', new THREE.BufferAttribute(mPos, 3));
+  moteGeo.setAttribute('color', new THREE.BufferAttribute(mCol, 3));
+  const motes = new THREE.Points(
+    moteGeo,
+    new THREE.PointsMaterial({
+      map: radialTexture(
+        [
+          [0, 'rgba(235,255,250,1)'],
+          [0.35, 'rgba(62,248,214,0.68)'],
+          [1, 'rgba(18,175,160,0)'],
+        ],
+        64,
+      ),
+      size: R * 0.048,
+      sizeAttenuation: true,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.72,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  motes.name = 'dustMotes';
+  tilt.add(motes);
+
+  g.userData.magUniforms = magUniforms;
+  return g;
+}
+
 function haloShell(p: PlanetDef, scale: number, peakPow: number, gain: number, atmo: THREE.Color, selfLit = false): THREE.Mesh {
   return new THREE.Mesh(
     new THREE.SphereGeometry(p.radius * scale, 48, 32),
@@ -1857,6 +2269,7 @@ function buildPlanet(p: PlanetDef): THREE.Group {
 
   if (p.kind === 'blackhole') return buildBlackhole(p);
   if (p.kind === 'ring-city') return buildRingCity(p);
+  if (p.kind === 'magnetar') return buildMagnetar(p);
 
   if (p.kind === 'red-giant') {
     const surfaceMat = new THREE.ShaderMaterial({
@@ -2195,6 +2608,21 @@ export function buildSpace(): SpaceView {
   const bhRight = new THREE.Vector3();
   const bhBasis = new THREE.Matrix4();
 
+  // local emerald-cyan magnetar directional rim light + soft point glow (isolated in `near`,
+  // distance-attenuated so cabin and distant planets are never affected)
+  const magPlanet = PLANETS.find((p) => p.kind === 'magnetar');
+  const magCenter = magPlanet ? new THREE.Vector3(magPlanet.pos.x, magPlanet.pos.y, magPlanet.pos.z) : null;
+  const magRimLight = magPlanet ? new THREE.DirectionalLight(0x48ffd8, 0) : null;
+  if (magRimLight && magCenter) {
+    magRimLight.position.copy(magCenter);
+    near.add(magRimLight, magRimLight.target);
+  }
+  const magGlowLight = magPlanet ? new THREE.PointLight(0x28f2cc, 0, magPlanet.radius * 5.5, 0.7) : null;
+  if (magGlowLight && magCenter) {
+    magGlowLight.position.copy(magCenter);
+    near.add(magGlowLight);
+  }
+
   // stardust: points in a box around the ship, wrapped as it moves
   const rnd = mulberry32(3);
   const dust = new Float32Array(DUST_COUNT * 3);
@@ -2234,6 +2662,8 @@ export function buildSpace(): SpaceView {
       for (const p of planets) {
         p.getObjectByName('surface')!.rotation.y += dt * 0.01;
         for (const m of (p.userData.timeMats ?? []) as THREE.ShaderMaterial[]) m.uniforms.uTime.value = t;
+        const magU = p.userData.magUniforms as { uTime: { value: number } } | undefined;
+        if (magU) magU.uTime.value = t;
         const bhU = p.userData.bhUniforms as { uTime: { value: number }; uCamPhase: { value: number } } | undefined;
         if (bhU) {
           bhU.uTime.value = t;
@@ -2346,6 +2776,17 @@ export function buildSpace(): SpaceView {
             pulseMat.opacity = (1 - pFrac) * 0.85;
           }
         }
+      }
+      if (magCenter && magPlanet && magRimLight && magGlowLight) {
+        // distance-attenuated emerald-cyan magnetospheric rim lighting onto approaching ship
+        const dMag = shipPos.distanceTo(magCenter);
+        const u = Math.max(0, Math.min(1, (dMag - magPlanet.radius * 3.8) / (magPlanet.radius * 2.4)));
+        const w = 1 - u * u * (3 - 2 * u);
+        magRimLight.intensity = 1.45 * w;
+        magRimLight.position.copy(magCenter);
+        magRimLight.target.position.copy(shipPos);
+        magRimLight.target.updateMatrixWorld();
+        magGlowLight.intensity = 2.2 * w;
       }
       beacon.scale.setScalar(1 + 0.5 * Math.max(0, Math.sin(t * 3)));
       // wrap dust into the box centred on the ship
