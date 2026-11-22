@@ -7,7 +7,18 @@ import { beltRocks, BINARY_STARS, PLANETS, STATION, SUN_DIR, SUN_DISTANCE, SUN_R
 import { MAT, arc, glow } from './materials.ts';
 import { PAL } from './palette.ts';
 import { buildRings } from './rings.ts';
-import { binaryTexture, blackholeDiskTexture, blackholeLensTexture, flareTexture, planetTexture, radialTexture, redGiantTexture, rockTexture } from './textures.ts';
+import {
+  binaryTexture,
+  blackholeDiskTexture,
+  blackholeLensTexture,
+  flareTexture,
+  planetTexture,
+  radialTexture,
+  redGiantTexture,
+  ringCityCoreTexture,
+  ringCityHullTexture,
+  rockTexture,
+} from './textures.ts';
 
 const sunDir = new THREE.Vector3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z);
 
@@ -360,6 +371,27 @@ const DUST_VEIL_SCALE = 2.6;
 /** tilted accretion disk orientation in world space (local XZ -> tilted world plane, ~17° tilt) */
 export const BH_DISK_QUAT = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.28, 0.14, -0.22));
 export const BH_SPIN_AXIS = new THREE.Vector3(0, 1, 0).applyQuaternion(BH_DISK_QUAT).normalize();
+
+/** tilted orbital ring-city plane orientation in world space (~16° tilt) */
+export const RING_CITY_QUAT = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.22, -0.18, 0.14));
+
+// thin artificial shield shell (1.00R–1.04R, FrontSide, pale blue, alpha <= 0.18, no natural haze)
+const RING_SHIELD_FRAG = /* glsl */ `
+uniform vec3 uCol;
+uniform float uTime;
+varying vec3 vN;
+varying vec3 vW;
+void main() {
+  vec3 n = normalize(vN);
+  vec3 v = normalize(cameraPosition - vW);
+  float ndv = abs(dot(n, v));
+  float rim = pow(1.0 - ndv, 3.6);
+  float band = 0.88 + 0.12 * sin(vW.y * 0.25 + uTime * 1.4);
+  float a = clamp(rim * 0.18 * band, 0.0, 0.18);
+  gl_FragColor = vec4(uCol, a);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
 
 /** RingGeometry in local XZ (or XY when `inXY = true`) with seamless polar UVs:
  *  u = azimuth [0,1) around the ring, v = radial [0,1] from innerR to outerR. */
@@ -1071,6 +1103,368 @@ function buildGasStation(p: PlanetDef): THREE.Group {
   return root;
 }
 
+/** Artificial orbital ring city (`ring-city`): double metallic rings (1.55R–1.75R main +
+ *  1.25R–1.30R inner), >=600 instanced warm-white/amber window light grid, 60 phased
+ *  cool-white nav beacons (every 6 deg), 12 ring modules (every 30 deg) with teal strips,
+ *  4 opposing docking towers, dark paneled core with blue equatorial lamp + 4 spokes,
+ *  and narrow 1.00R–1.04R pale-blue artificial shield (alpha <= 0.18). */
+function buildRingCity(p: PlanetDef): THREE.Group {
+  const g = new THREE.Group();
+  g.position.set(p.pos.x, p.pos.y, p.pos.z);
+
+  const R = p.radius;
+  const rnd = mulberry32(p.seed + 31);
+
+  const tilt = new THREE.Group();
+  tilt.quaternion.copy(RING_CITY_QUAT);
+  g.add(tilt);
+
+  // Rotating ring-city assembly (must be named 'surface' for space.update spin)
+  const surface = new THREE.Group();
+  surface.name = 'surface';
+  tilt.add(surface);
+
+  const hullTex = ringCityHullTexture(p.seed);
+  const hullMat = new THREE.MeshStandardMaterial({
+    map: hullTex,
+    color: 0x5c6d82,
+    metalness: 0.85,
+    roughness: 0.35,
+    envMapIntensity: 1.4,
+    side: THREE.DoubleSide,
+  });
+  const trimMat = new THREE.MeshStandardMaterial({
+    color: 0x263242,
+    metalness: 0.88,
+    roughness: 0.32,
+    envMapIntensity: 1.35,
+    side: THREE.DoubleSide,
+  });
+  const coreMat = new THREE.MeshStandardMaterial({
+    map: ringCityCoreTexture(p.seed),
+    color: 0x3b485c,
+    metalness: 0.82,
+    roughness: 0.42,
+    envMapIntensity: 1.1,
+  });
+
+  // 1) Main outer ring (1.55R–1.75R) with chamfered architectural profile
+  const mainH = R * 0.082;
+  const mainRing = arc(
+    [
+      [R * 1.55, -mainH * 0.65],
+      [R * 1.575, -mainH],
+      [R * 1.725, -mainH],
+      [R * 1.75, -mainH * 0.65],
+      [R * 1.75, mainH * 0.65],
+      [R * 1.725, mainH],
+      [R * 1.575, mainH],
+      [R * 1.55, mainH * 0.65],
+      [R * 1.55, -mainH * 0.65],
+    ],
+    0,
+    360,
+    hullMat,
+    96,
+  );
+  // Structural top/bottom keel rails along the main ring
+  const railTop = arc(
+    [
+      [R * 1.62, mainH],
+      [R * 1.62, mainH + R * 0.018],
+      [R * 1.68, mainH + R * 0.018],
+      [R * 1.68, mainH],
+    ],
+    0,
+    360,
+    trimMat,
+    96,
+  );
+  const railBot = arc(
+    [
+      [R * 1.62, -mainH],
+      [R * 1.62, -mainH - R * 0.018],
+      [R * 1.68, -mainH - R * 0.018],
+      [R * 1.68, -mainH],
+    ],
+    0,
+    360,
+    trimMat,
+    96,
+  );
+  surface.add(mainRing, railTop, railBot);
+
+  // Inner secondary ring (1.25R–1.30R) + subtle cyan inner transit line
+  const subH = R * 0.036;
+  const innerRing = arc(
+    [
+      [R * 1.25, -subH * 0.7],
+      [R * 1.26, -subH],
+      [R * 1.29, -subH],
+      [R * 1.30, -subH * 0.7],
+      [R * 1.30, subH * 0.7],
+      [R * 1.29, subH],
+      [R * 1.26, subH],
+      [R * 1.25, subH * 0.7],
+      [R * 1.25, -subH * 0.7],
+    ],
+    0,
+    360,
+    trimMat,
+    72,
+  );
+  const transitLine = arc(
+    [
+      [R * 1.246, -R * 0.008],
+      [R * 1.246, R * 0.008],
+    ],
+    0,
+    360,
+    glow(0x6fe2ff, 1.45, { side: THREE.DoubleSide }),
+    72,
+  );
+  surface.add(innerRing, transitLine);
+
+  // 2) Dense architectural window light grid (>= 600 instanced emissive patches, gain 1.85)
+  type WinSlot = { x: number; y: number; z: number; rotX: number; rotY: number; sx: number; sy: number; col: THREE.Color };
+  const winSlots: WinSlot[] = [];
+  const warmWhite = new THREE.Color(0xfff1d6);
+  const amber = new THREE.Color(0xffb464);
+  const ivory = new THREE.Color(0xffe2b0);
+  const dimGold = new THREE.Color(0x78532c);
+  const pickWinColor = (): THREE.Color | null => {
+    const v = rnd();
+    if (v < 0.22) return null; // unlit window for realistic residential/commercial rhythm
+    if (v < 0.58) return warmWhite;
+    if (v < 0.84) return amber;
+    if (v < 0.94) return ivory;
+    return dimGold;
+  };
+
+  // Outer facade (3 rows × 108 cols), inner facade (2 rows × 96 cols),
+  // top/bottom promenade decks (2 rows × 96 cols), inner sub-ring outer wall (1 row × 72 cols)
+  const addWallBand = (cols: number, rad: number, yLevels: number[], outward: boolean, sx: number, sy: number): void => {
+    for (let i = 0; i < cols; i++) {
+      const a = (i / cols) * Math.PI * 2;
+      // Leave narrow dark structural gaps around the 12 heavy modules (every 30 deg)
+      const deg = (i / cols) * 360;
+      const modDist = Math.abs(((deg + 15) % 30) - 15);
+      if (modDist < 2.2) continue;
+      for (const y of yLevels) {
+        const col = pickWinColor();
+        if (!col) continue;
+        winSlots.push({
+          x: Math.sin(a) * rad,
+          y,
+          z: Math.cos(a) * rad,
+          rotX: 0,
+          rotY: outward ? a : a + Math.PI,
+          sx,
+          sy,
+          col,
+        });
+      }
+    }
+  };
+  const addDeckBand = (cols: number, rads: number[], y: number, faceUp: boolean, sx: number, sy: number): void => {
+    for (let i = 0; i < cols; i++) {
+      const a = (i / cols) * Math.PI * 2;
+      const deg = (i / cols) * 360;
+      const modDist = Math.abs(((deg + 15) % 30) - 15);
+      if (modDist < 2.4) continue;
+      for (const rad of rads) {
+        const col = pickWinColor();
+        if (!col) continue;
+        winSlots.push({
+          x: Math.sin(a) * rad,
+          y,
+          z: Math.cos(a) * rad,
+          rotX: faceUp ? -Math.PI / 2 : Math.PI / 2,
+          rotY: a,
+          sx,
+          sy,
+          col,
+        });
+      }
+    }
+  };
+
+  addWallBand(120, R * 1.753, [-R * 0.038, 0, R * 0.038], true, R * 0.042, R * 0.014);
+  addWallBand(108, R * 1.547, [-R * 0.030, R * 0.030], false, R * 0.040, R * 0.014);
+  addDeckBand(108, [R * 1.592, R * 1.708], mainH + R * 0.004, true, R * 0.040, R * 0.017);
+  addDeckBand(96, [R * 1.592, R * 1.708], -mainH - R * 0.004, false, R * 0.038, R * 0.017);
+  addWallBand(84, R * 1.303, [-R * 0.014, R * 0.014], true, R * 0.034, R * 0.011);
+
+  const winGeo = new THREE.PlaneGeometry(1, 1);
+  const winMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(1.85, 1.85, 1.85),
+    transparent: true,
+    opacity: 1.0,
+    side: THREE.DoubleSide,
+  });
+  const winMesh = new THREE.InstancedMesh(winGeo, winMat, winSlots.length);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const e = new THREE.Euler();
+  const posV = new THREE.Vector3();
+  const scV = new THREE.Vector3();
+  winSlots.forEach((s, i) => {
+    e.set(s.rotX, s.rotY, 0, 'YXZ');
+    q.setFromEuler(e);
+    m.compose(posV.set(s.x, s.y, s.z), q, scV.set(s.sx, s.sy, 1));
+    winMesh.setMatrixAt(i, m);
+    winMesh.setColorAt(i, s.col);
+  });
+  winMesh.instanceMatrix.needsUpdate = true;
+  if (winMesh.instanceColor) winMesh.instanceColor.needsUpdate = true;
+  surface.add(winMesh);
+
+  // 3) Outer sparse cool-white navigation beacons (every 6 deg = 60 beacons, phased blink)
+  const navCount = 60;
+  const navGeo = new THREE.OctahedronGeometry(R * 0.015, 0);
+  const navPhases = new Float32Array(navCount);
+  for (let i = 0; i < navCount; i++) navPhases[i] = (i * 1.37 + rnd() * 2.5) % (Math.PI * 2);
+  navGeo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(navPhases, 1));
+  const navUniforms = { uTime: { value: 0 } };
+  const navMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0xdcf4ff).multiplyScalar(2.0),
+    transparent: true,
+    opacity: 1.0,
+  });
+  navMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = navUniforms.uTime;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float aPhase;\nvarying float vNavPhase;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvNavPhase = aPhase;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nvarying float vNavPhase;')
+      .replace(
+        'vec4 diffuseColor = vec4( diffuse, opacity );',
+        'float navBlink = 0.22 + 0.78 * pow(0.5 + 0.5 * sin(uTime * 2.8 + vNavPhase), 4.0);\nvec4 diffuseColor = vec4( diffuse * navBlink, opacity * (0.35 + 0.65 * navBlink) );',
+      );
+  };
+  const navMesh = new THREE.InstancedMesh(navGeo, navMat, navCount);
+  scV.set(1, 1, 1);
+  for (let i = 0; i < navCount; i++) {
+    const a = (i / navCount) * Math.PI * 2;
+    const ySign = i % 2 === 0 ? 1 : -1;
+    q.setFromEuler(e.set(0, a, 0));
+    m.compose(posV.set(Math.sin(a) * R * 1.772, ySign * R * 0.056, Math.cos(a) * R * 1.772), q, scV);
+    navMesh.setMatrixAt(i, m);
+  }
+  navMesh.instanceMatrix.needsUpdate = true;
+  surface.add(navMesh);
+
+  // 4) 12 thickened ring modules (every 30 deg) + teal accent strips
+  const modGeo = new THREE.BoxGeometry(R * 0.24, R * 0.21, R * 0.265);
+  const modMesh = new THREE.InstancedMesh(modGeo, trimMat, 12);
+  const stripGeo = new THREE.BoxGeometry(R * 0.25, R * 0.016, R * 0.272);
+  const stripMesh = new THREE.InstancedMesh(stripGeo, glow(PAL.tealAccent, 1.55), 24);
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    q.setFromEuler(e.set(0, a, 0));
+    m.compose(posV.set(Math.sin(a) * R * 1.65, 0, Math.cos(a) * R * 1.65), q, scV);
+    modMesh.setMatrixAt(i, m);
+    for (let s = 0; s < 2; s++) {
+      const yOff = s === 0 ? R * 0.088 : -R * 0.088;
+      m.compose(posV.set(Math.sin(a) * R * 1.65, yOff, Math.cos(a) * R * 1.65), q, scV);
+      stripMesh.setMatrixAt(i * 2 + s, m);
+    }
+  }
+  modMesh.instanceMatrix.needsUpdate = true;
+  stripMesh.instanceMatrix.needsUpdate = true;
+  surface.add(modMesh, stripMesh);
+
+  // 5) 4 opposing docking towers (0, 90, 180, 270 deg): pylon + ring platforms + top beacon
+  const towerBodyGeo = new THREE.BoxGeometry(R * 0.11, R * 0.68, R * 0.15);
+  const towerBody = new THREE.InstancedMesh(towerBodyGeo, hullMat, 4);
+  const towerCollarGeo = new THREE.CylinderGeometry(R * 0.145, R * 0.16, R * 0.048, 12);
+  const towerCollar = new THREE.InstancedMesh(towerCollarGeo, trimMat, 4);
+  const towerRingLightGeo = new THREE.TorusGeometry(R * 0.154, R * 0.011, 8, 24);
+  towerRingLightGeo.rotateX(Math.PI / 2);
+  const towerRingLight = new THREE.InstancedMesh(towerRingLightGeo, glow(0x7ae4ff, 1.9), 4);
+  const towerSpireGeo = new THREE.CylinderGeometry(R * 0.012, R * 0.032, R * 0.22, 8);
+  const towerSpire = new THREE.InstancedMesh(towerSpireGeo, trimMat, 4);
+  const towerTopLampGeo = new THREE.SphereGeometry(R * 0.026, 12, 10);
+  const towerTopLamp = new THREE.InstancedMesh(towerTopLampGeo, glow(0xffd28a, 2.15), 4);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    const rx = Math.sin(a) * R * 1.65;
+    const rz = Math.cos(a) * R * 1.65;
+    q.setFromEuler(e.set(0, a, 0));
+    m.compose(posV.set(rx, R * 0.12, rz), q, scV);
+    towerBody.setMatrixAt(i, m);
+    m.compose(posV.set(rx, R * 0.30, rz), q, scV);
+    towerCollar.setMatrixAt(i, m);
+    towerRingLight.setMatrixAt(i, m);
+    m.compose(posV.set(rx, R * 0.49, rz), q, scV);
+    towerSpire.setMatrixAt(i, m);
+    m.compose(posV.set(rx, R * 0.61, rz), q, scV);
+    towerTopLamp.setMatrixAt(i, m);
+  }
+  for (const im of [towerBody, towerCollar, towerRingLight, towerSpire, towerTopLamp]) {
+    im.instanceMatrix.needsUpdate = true;
+    surface.add(im);
+  }
+
+  // 6) Small dark artificial core + blue equatorial ring lamp + 4 slender dark-metal spokes
+  const coreSphere = new THREE.Mesh(new THREE.SphereGeometry(R * 0.44, 36, 24), coreMat);
+  const coreRing = new THREE.Mesh(
+    new THREE.TorusGeometry(R * 0.465, R * 0.022, 10, 64),
+    glow(0x52c8ff, 1.95),
+  );
+  coreRing.rotation.x = Math.PI / 2;
+  const coreCapGeo = new THREE.CylinderGeometry(R * 0.14, R * 0.22, R * 0.12, 16);
+  const coreCapTop = new THREE.Mesh(coreCapGeo, trimMat);
+  coreCapTop.position.y = R * 0.44;
+  const coreCapBot = new THREE.Mesh(coreCapGeo, trimMat);
+  coreCapBot.position.y = -R * 0.44;
+  coreCapBot.rotation.x = Math.PI;
+  surface.add(coreSphere, coreRing, coreCapTop, coreCapBot);
+
+  const spokeLen = R * 1.16;
+  const spokeGeo = new THREE.BoxGeometry(R * 0.055, R * 0.044, spokeLen);
+  const spokeMesh = new THREE.InstancedMesh(spokeGeo, trimMat, 4);
+  const spokeLineGeo = new THREE.BoxGeometry(R * 0.014, R * 0.012, spokeLen * 0.94);
+  const spokeLine = new THREE.InstancedMesh(spokeLineGeo, glow(0x6ad6ff, 1.5), 4);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    const midR = R * 1.00;
+    q.setFromEuler(e.set(0, a, 0));
+    m.compose(posV.set(Math.sin(a) * midR, 0, Math.cos(a) * midR), q, scV);
+    spokeMesh.setMatrixAt(i, m);
+    m.compose(posV.set(Math.sin(a) * midR, R * 0.026, Math.cos(a) * midR), q, scV);
+    spokeLine.setMatrixAt(i, m);
+  }
+  spokeMesh.instanceMatrix.needsUpdate = true;
+  spokeLine.instanceMatrix.needsUpdate = true;
+  surface.add(spokeMesh, spokeLine);
+
+  // 7) Narrow low-opacity pale-blue artificial shield shell (1.00R–1.04R, alpha <= 0.18, no natural haze)
+  const shieldMat = new THREE.ShaderMaterial({
+    vertexShader: PLANET_VERT,
+    fragmentShader: RING_SHIELD_FRAG,
+    uniforms: {
+      uCol: { value: new THREE.Color(p.atmosphere) },
+      uTime: { value: 0 },
+    },
+    transparent: true,
+    depthWrite: false,
+    side: THREE.FrontSide,
+  });
+  const shield = new THREE.Mesh(new THREE.SphereGeometry(R * 1.04, 48, 32), shieldMat);
+  g.add(shield);
+
+  g.userData.timeMats = [shieldMat];
+  g.userData.ringCity = {
+    center: new THREE.Vector3(p.pos.x, p.pos.y, p.pos.z),
+    winMat,
+    navMat,
+    navUniforms,
+  };
+  return g;
+}
+
 function haloShell(p: PlanetDef, scale: number, peakPow: number, gain: number, atmo: THREE.Color, selfLit = false): THREE.Mesh {
   return new THREE.Mesh(
     new THREE.SphereGeometry(p.radius * scale, 48, 32),
@@ -1201,6 +1595,7 @@ function buildPlanet(p: PlanetDef): THREE.Group {
   const atmo = new THREE.Color(p.atmosphere);
 
   if (p.kind === 'blackhole') return buildBlackhole(p);
+  if (p.kind === 'ring-city') return buildRingCity(p);
 
   if (p.kind === 'red-giant') {
     const surfaceMat = new THREE.ShaderMaterial({
@@ -1480,6 +1875,19 @@ export function buildSpace(): SpaceView {
     near.add(starLight);
   }
 
+  // local weak warm-white PointLight on ring-city (intensity <= 0.8, near-only so cabin is never polluted)
+  const ringCityPlanet = PLANETS.find((p) => p.kind === 'ring-city');
+  const ringCityCenter = ringCityPlanet
+    ? new THREE.Vector3(ringCityPlanet.pos.x, ringCityPlanet.pos.y, ringCityPlanet.pos.z)
+    : null;
+  const ringCityLight = ringCityPlanet
+    ? new THREE.PointLight(0xffe6c4, 0, ringCityPlanet.radius * 5.2, 0.5)
+    : null;
+  if (ringCityLight && ringCityPlanet) {
+    ringCityLight.position.set(ringCityPlanet.pos.x, ringCityPlanet.pos.y + ringCityPlanet.radius * 0.25, ringCityPlanet.pos.z);
+    near.add(ringCityLight);
+  }
+
   // local accretion-disk warm-white & cool-violet PointLights + directional rim light for blackhole
   // (all isolated inside `near` so cabin lighting is never affected)
   const bhPlanet = PLANETS.find((p) => p.kind === 'blackhole');
@@ -1590,6 +1998,18 @@ export function buildSpace(): SpaceView {
         }
         const dm = p.getObjectByName('dustMotes');
         if (dm) dm.rotation.y += dt * 0.008;
+        const rc = p.userData.ringCity as
+          | { center: THREE.Vector3; winMat: THREE.MeshBasicMaterial; navMat: THREE.MeshBasicMaterial; navUniforms: { uTime: { value: number } } }
+          | undefined;
+        if (rc) {
+          rc.navUniforms.uTime.value = t;
+          // distance LOD fade-out so dense window grid & beacons stay crisp up close and never smear at long range
+          const dCam = cam.position.distanceTo(rc.center);
+          const fadeT = Math.max(0, Math.min(1, (dCam - 680) / (1650 - 680)));
+          const smoothFade = fadeT * fadeT * (3 - 2 * fadeT);
+          rc.winMat.opacity = 1.0 - smoothFade * 0.72;
+          rc.navMat.opacity = 1.0 - smoothFade * 0.66;
+        }
       }
       markerMat.opacity = 0.55 + 0.25 * Math.sin(t * 2.4);
       flare.material.rotation = t * 0.02;
@@ -1607,6 +2027,13 @@ export function buildSpace(): SpaceView {
         binaryWarmLight.intensity = 1.5 * w;
         sunLight.color.copy(baseSunColor).lerp(coolStarColor, w);
         sunLight.position.copy(baseSunPos).lerp(binaryCoolPos, w);
+      }
+      if (ringCityCenter && ringCityLight && ringCityPlanet) {
+        // enable weak warm-white point light (<= 0.8) only when ship is near the ring city
+        const dRc = shipPos.distanceTo(ringCityCenter);
+        const u = Math.max(0, Math.min(1, (dRc - ringCityPlanet.radius * 3.8) / (ringCityPlanet.radius * 2.0)));
+        const w = 1 - u * u * (3 - 2 * u);
+        ringCityLight.intensity = 0.78 * w;
       }
       if (bhCenter && bhPlanet) {
         // smooth distance-attenuated rim key light from the accretion disk onto the ship's BH-facing hull

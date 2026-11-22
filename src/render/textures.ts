@@ -951,3 +951,111 @@ export function blackholeLensTexture(seed = 131): THREE.Texture {
   t.wrapT = THREE.ClampToEdgeWrapping;
   return t;
 }
+
+/** Tileable dark metallic hull plating for artificial structures (ring-city main/inner rings). */
+export function ringCityHullTexture(seed = 131): THREE.Texture {
+  const W = 512;
+  const H = 256;
+  const [c, g] = canvas(W, H);
+  const rnd = mulberry32(seed + 11);
+
+  // dark slate-steel base
+  g.fillStyle = '#242e3d';
+  g.fillRect(0, 0, W, H);
+
+  // ordered architectural hull plates (no organic clouds)
+  const cols = 16;
+  const rows = 8;
+  const pw = W / cols;
+  const ph = H / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let k = 0; k < cols; k++) {
+      const shade = 26 + Math.floor(rnd() * 20);
+      g.fillStyle = `rgb(${shade}, ${shade + 8}, ${shade + 18})`;
+      g.fillRect(k * pw + 1, r * ph + 1, pw - 2, ph - 2);
+      // subtle inner structural recess on alternating plates
+      if ((r + k) % 3 === 0) {
+        g.fillStyle = 'rgba(10, 14, 22, 0.35)';
+        g.fillRect(k * pw + 4, r * ph + 5, pw - 8, ph - 10);
+      }
+      // crisp metallic highlight bevel along top edge
+      g.fillStyle = 'rgba(165, 195, 228, 0.14)';
+      g.fillRect(k * pw + 1, r * ph + 1, pw - 2, 1.5);
+    }
+  }
+
+  // expansion joint grid seams
+  g.strokeStyle = 'rgba(8, 12, 18, 0.72)';
+  g.lineWidth = 2;
+  for (let k = 0; k <= cols; k++) {
+    g.beginPath();
+    g.moveTo(k * pw, 0);
+    g.lineTo(k * pw, H);
+    g.stroke();
+  }
+  for (let r = 0; r <= rows; r++) {
+    g.beginPath();
+    g.moveTo(0, r * ph);
+    g.lineTo(W, r * ph);
+    g.stroke();
+  }
+
+  // fine longitudinal brushed metal streaks
+  g.fillStyle = 'rgba(180, 210, 240, 0.05)';
+  for (let i = 0; i < 60; i++) {
+    g.fillRect(0, Math.floor(rnd() * H), W, 1);
+  }
+
+  const t = tex(c);
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(6, 1);
+  return t;
+}
+
+/** Low-albedo paneled reactor core texture for ring-city central sphere. */
+export function ringCityCoreTexture(seed = 131): THREE.Texture {
+  const W = 512;
+  const H = 256;
+  const [c, g] = canvas(W, H);
+  const rnd = mulberry32(seed + 47);
+
+  g.fillStyle = '#141b26';
+  g.fillRect(0, 0, W, H);
+
+  // armored meridian & latitude ribs
+  const cols = 24;
+  const rows = 10;
+  const pw = W / cols;
+  const ph = H / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let k = 0; k < cols; k++) {
+      const v = 16 + Math.floor(rnd() * 14);
+      g.fillStyle = `rgb(${v}, ${v + 5}, ${v + 12})`;
+      g.fillRect(k * pw + 1, r * ph + 1, pw - 2, ph - 2);
+    }
+  }
+  g.strokeStyle = 'rgba(6, 10, 16, 0.8)';
+  g.lineWidth = 1.5;
+  for (let k = 0; k <= cols; k++) {
+    g.beginPath();
+    g.moveTo(k * pw, 0);
+    g.lineTo(k * pw, H);
+    g.stroke();
+  }
+  for (let r = 0; r <= rows; r++) {
+    g.beginPath();
+    g.moveTo(0, r * ph);
+    g.lineTo(W, r * ph);
+    g.stroke();
+  }
+
+  // dark equatorial recessed band where the blue core ring sits
+  g.fillStyle = '#0b1018';
+  g.fillRect(0, H * 0.44, W, H * 0.12);
+
+  const t = tex(c);
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.ClampToEdgeWrapping;
+  return t;
+}
