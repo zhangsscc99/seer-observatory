@@ -323,15 +323,20 @@ export function buildCabin(): CabinView {
   holoPool.position.set(CABIN.pedestal.x, 0.014, CABIN.pedestal.z);
   group.add(holoPool);
 
-  // lights: soft white fill + key from the skylight + holo green + cool rim
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x9fb8e0, 1.05);
-  const key = new THREE.DirectionalLight(0xffffff, 1.15);
-  key.position.set(1.5, 6, 2.5);
-  const holoLight = new THREE.PointLight(PAL.holoGreen, 5, 7, 1.6);
-  holoLight.position.set(CABIN.pedestal.x, 1.7, CABIN.pedestal.z);
-  const cool = new THREE.PointLight(0x8fdcff, 9, 12, 1.4);
-  cool.position.set(0, 2.9, 0);
-  group.add(hemi, key, key.target, holoLight, cool);
+  // lights: directional key slanting from port-bow window/skylight + low hemisphere fill
+  // + 3 localized accent PointLights (<= 1.2) so forms read with clear light/shadow modeling
+  const hemi = new THREE.HemisphereLight(0xcfe0ff, 0x344666, 0.50);
+  const key = new THREE.DirectionalLight(0xdfefff, 2.6);
+  key.position.set(-5.6, 5.4, -5.4);
+  key.target.position.set(0.8, 0.2, 0.8);
+  key.castShadow = false;
+  const holoLight = new THREE.PointLight(PAL.holoGreen, 1.2, 6.5, 1.1);
+  holoLight.position.set(CABIN.pedestal.x, 1.65, CABIN.pedestal.z);
+  const stripL = new THREE.PointLight(0x52dcff, 1.15, 7.5, 1.1);
+  stripL.position.set(-4.6, 1.2, -1.0);
+  const stripR = new THREE.PointLight(0x52dcff, 1.15, 7.5, 1.1);
+  stripR.position.set(4.6, 1.2, -1.0);
+  group.add(hemi, key, key.target, holoLight, stripL, stripR);
 
   const holoMats = [
     ped.globe.children[0],
@@ -372,7 +377,7 @@ export function buildCabin(): CabinView {
       const flick = 0.92 + 0.08 * Math.sin(t * 23) * Math.sin(t * 7.3);
       holoMats.forEach((m, i) => (m.opacity = Math.min(1, baseOpacity[i] * flick * (1 + thrust))));
       (ped.beam.material as THREE.MeshBasicMaterial).opacity = 0.14 + 0.04 * Math.sin(t * 3) + thrust * 0.4;
-      holoLight.intensity = 5 + thrust * 30;
+      holoLight.intensity = 1.2 + thrust * 18;
     },
   };
 }
