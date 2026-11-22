@@ -157,3 +157,13 @@ npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measu
 | 11.3 | 停靠接入主循环与 HUD：`hud.ts setDock()` 驱动补给进度条，停靠完成写 `seer.archive` 并补满能量 | `grep -n "setDock" src/render/hud.ts src/main.ts` |
 | 11.4 | 环城视觉回归：护盾淡蓝能量壳（rim pow 2.5，alpha `0.05 + rim × 0.30`，上限 0.30）；窗光 gain 1.35，未点亮窗比例 0.28 | `grep -n "rim \* 0.30\|1.35, 1.35, 1.35\|v < 0.28" src/render/space.ts` |
 | 11.5 | M11 look-gate 截图：横竖屏 `ring-844x390.png` / `ring-390x844.png`，`measure-look` → `LOOK OK` | `ls e2e/shots/ring-*.png` |
+
+## M12 环形城市画面跃迁（F1114–F1116）
+
+| # | 功能 | verify |
+| --- | --- | --- |
+| 12.1 | 核心枢纽去死黑：`ringCityCoreTexture` 底板 `#3b495e` + 面板明暗/高光倒角；`coreMat` `0x7389a6 / metalness 0.58 / roughness 0.5`；核心球 6 纬带 ≥220 个 instanced 自发光舱窗（15% 不亮、gain 1.45/1.0/0.58）、`±34°` 两条纬向灯带、极冠各 16 个灯点 | `grep -n "coreWinSlots\|coreSubRings\|corePolarDots\|3b495e" src/render/space.ts src/render/textures.ts` |
+| 12.2 | 定向主光 + 轮廓光 + 城市光晕：环城专属 `DirectionalLight(0xdceeff)`（`SUN_DIR` 偏 25°、仅 `near`、强度 `1.6 × wk`）；`hullMat` `metalness 0.65`；`1.755R` 向阳侧 additive rim 环带；`1.05R–2.02R` 暖色环雾（`opacity 0.085`，上限 0.10） | `grep -n "ringCityKeyLight\|sunSide\|hazeGeo" src/render/space.ts` |
+| 12.3 | 结构细节与窗光层次：外环 36 组 instanced 散热鳍片/天线桅杆/服务舱（≤0.06R）；窗光三档 gain `1.9 / 1.35 / 0.7`（`setColorAt`，冷暖 7:3）；4 座塔根部机库口 + 暖光条 | `grep -n "detailSets\|towerHangarGeo\|1.9 : t < 0.68" src/render/space.ts` |
+| 12.4 | 观感实测与出图（2026-11-22，844×390）：cabin `121.71 / 0.022 / 230.01`、space `93.08 / 183.64`、ring `64.91 / 147.58`（M11 `61.5 / 139.7`）；竖屏 ring `64.66 / 156.80` | `node scripts/measure-look.mjs`；`ls e2e/shots/ring-*.png` |
+| 12.5 | 部署：`ci-deploy` → `DEPLOY OK`；本机与公网同哈希 `index-LQG4jeFw.js`，公网 200 | `curl -s https://openfolio.uk/seer/ \| grep -o 'index-[^"]*\.js'` |

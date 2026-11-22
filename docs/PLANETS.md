@@ -74,6 +74,14 @@
 4. ✅ 视觉回归：环城护盾读成淡蓝能量壳（rim pow 3.6→2.5，alpha `0.05 + rim × 0.30`，上限 0.30）；窗光 gain 2.05→1.35，未点亮窗比例 0.22→0.28 —— `08553e8`
 5. ✅ M11 look-gate 截图：`ring-844x390.png` / `ring-390x844.png`；`node scripts/measure-look.mjs` → `LOOK OK`（844×390 ring `61.5/139.7`、390×844 ring `59.0/142.4`）；单元测试 57 pass，`node e2e/smoke.mjs` → `SMOKE OK` —— `74d0388`
 
-下一颗候选：待定。
+## `ring-city` 二次画面跃迁（M12，F1114–F1116）
+
+1. ✅ 核心枢纽去死黑（`bd2012c`）：`ringCityCoreTexture` 底板 `#141b26 → #3b495e` + 面板明暗/高光倒角；`coreMat` 改 `0x7389a6 / metalness 0.58 / roughness 0.5`；核心球加 6 纬带 ≥220 个自发光舱窗（15% 不亮、三档 gain）、`±34°` 两条纬向灯带、极冠各 16 个青/暖灯点 —— 特写里核心球不再成片纯黑。
+2. ✅ 定向主光 + 轮廓光 + 城市光晕（`82d33f0`）：环城专属 `DirectionalLight(0xdceeff)`（`SUN_DIR` 偏 25°、仅 `near` 组、强度 `1.6 × wk`）；`hullMat` `metalness 0.85 → 0.65`；主环 `1.755R` 向阳侧 additive rim 环带（背光侧 ≈0）；环平面上下 `1.05R–2.02R` 暖色环雾（`opacity 0.085`，≤0.10）。目视：环体出现明确亮/暗面与边缘亮线，星空未被糊住。
+3. ✅ 结构细节与窗光层次（`05b0062`）：外环 36 组 instanced 散热鳍片/天线桅杆/服务舱（≤0.06R）；窗光三档 gain `1.9 / 1.35 / 0.7`（`setColorAt`，冷暖 7:3）；4 座停靠塔根部机库口 + 暖光条。
+4. ✅ 实测（2026-11-22，844×390）：cabin `121.71 / darkFrac 0.022 / p95 230.01`、space `93.08 / p95 183.64`、ring `64.91 / p95 147.58`（M11 `61.5 / 139.7`）；竖屏 ring `64.66 / 156.80`、space `91.3 / 177.89`。截图 `e2e/shots/{cabin,space,ring}-{844x390,390x844}.png`。
+5. ✅ 部署：`bash scripts/ci-deploy.sh` → `DEPLOY OK`；本机与公网均为 `index-LQG4jeFw.js`，`https://openfolio.uk/seer/` 200（T8 之后首次本机=公网一致）。
+
+下一颗候选：待定（六颗候选星球全部上线，之后按画质走查清单 T3–T13 逐条推进）。
 
 进度标记：⏳ 进行中 · ✅ 已上线（带提交 hash）· 未开始
