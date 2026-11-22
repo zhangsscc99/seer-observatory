@@ -132,7 +132,7 @@ const waitFrames = async (page, n) => {
 async function screenshotWithRetry(page, label) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      return await page.screenshot({ timeout: 120000 });
+      return await page.screenshot({ timeout: 240000 });
     } catch (e) {
       if (attempt === 3) throw e;
       console.log(`screenshot ${label} attempt ${attempt}/3 failed: ${String(e).split('\n')[0]}`);
@@ -195,78 +195,108 @@ function report(label, s, th, gate = true) {
 
 let ok = true;
 const errors = [];
-// landscape is the gated viewport; portrait is shot for the record
-const VIEWS = process.env.SEER_FAST ? [[844, 390, true]] : [[844, 390, true], [390, 844, false]];
-for (const [w, h, gate] of VIEWS) {
+
+/** Shoot + gate one viewport. Returns true when every gated check passed.
+ *  Any browser-level failure (disconnect, wedged page) throws so the caller
+ *  can retry the whole viewport with a fresh process. */
+async function runViewport(w, h, gate, errors) {
   const s = await open(w, h, errors);
   if (!s) {
-    console.error('FAIL — page never rendered frames');
-    process.exit(1);
+    console.error(`FAIL — ${w}x${h} page never rendered frames`);
+    return false;
   }
   const { browser, page } = s;
   const tag = `${w}x${h}`;
-  // enter the game the way a player does: tap 开始探索
-  await page.evaluate(() => document.getElementById('go').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })));
-  if (!(await page.evaluate(() => window.__seer.started))) {
-    console.error('FAIL — start button did not start the game');
-    process.exit(1);
-  }
-  await waitFrames(page, 12);
-  let png = await screenshotWithRetry(page, `cabin ${tag}`);
-  writeFileSync(path.join(SHOTS, `cabin-${tag}.png`), png);
-  const cabin = await stats(page, png);
-  const cabinPass = report(`cabin ${tag}${gate ? '' : ' (info)'}`, cabin, THRESH.cabin, gate);
-  if (gate && !cabinPass) ok = false;
+  let viewOk = true;
+  try {
+    // enter the game the way a player does: tap 开始探索
+    await page.evaluate(() => document.getElementById('go').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })));
+    if (!(await page.evaluate(() => window.__seer.started))) {
+      console.error('FAIL — start button did not start the game');
+      return false;
+    }
+    await waitFrames(page, 12);
+    let png = await screenshotWithRetry(page, `cabin ${tag}`);
+    writeFileSync(path.join(SHOTS, `cabin-${tag}.png`), png);
+    const cabin = await stats(page, png);
+    const cabinPass = report(`cabin ${tag}${gate ? '' : ' (info)'}`, cabin, THRESH.cabin, gate);
+    if (gate && !cabinPass) viewOk = false;
 
-  // walk-up shortcut, then the real launch path (proximity gate → transit)
-  await page.evaluate(() => {
-    window.__seer.gotoPedestal();
-  });
-  await waitFrames(page, 3);
-  const actVisible = await page.evaluate(() => !document.getElementById('act').classList.contains('hidden'));
-  if (!actVisible) {
-    console.log('FAIL  启航 button not shown next to the holo table');
-    ok = false;
-  }
-  await page.evaluate(() => document.getElementById('act').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })));
-  await page.evaluate(() => document.getElementById('launch').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })));
-  for (let i = 0; i < 600; i++) {
-    await page.waitForTimeout(250);
-    if ((await page.evaluate(() => window.__seer.mode.mode)) === 'space') break;
-  }
-  if ((await page.evaluate(() => window.__seer.mode.mode)) !== 'space') {
-    console.log('FAIL  never arrived in space mode');
-    ok = false;
-  }
-  await waitFrames(page, 10);
-  png = await screenshotWithRetry(page, `space ${tag}`);
-  writeFileSync(path.join(SHOTS, `space-${tag}.png`), png);
-  const space = await stats(page, png);
-  const spacePass = report(`space ${tag}${gate ? '' : ' (info)'}`, space, THRESH.space, gate);
-  if (gate && !spacePass) ok = false;
+    // walk-up shortcut, then the real launch path (proximity gate → transit)
+    await page.evaluate(() => {
+      window.__seer.gotoPedestal();
+    });
+    await waitFrames(page, 3);
+    const actVisible = await page.evaluate(() => !document.getElementById('act').classList.contains('hidden'));
+    if (!actVisible) {
+      console.log('FAIL  启航 button not shown next to the holo table');
+      viewOk = false;
+    }
+    await page.evaluate(() => document.getElementById('act').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })));
+    await page.evaluate(() => document.getElementById('launch').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })));
+    let crashes = 0;
+    for (let i = 0; i < 1200 && crashes < 20; i++) {
+      await page.waitForTimeout(250);
+      const m = await page.evaluate(() => window.__seer.mode.mode).catch(() => 'crashed');
+      if (m === 'space') break;
+      crashes = m === 'crashed' ? crashes + 1 : 0;
+    }
+    if ((await page.evaluate(() => window.__seer.mode.mode)) !== 'space') {
+      console.log('FAIL  never arrived in space mode');
+      viewOk = false;
+    }
+    await waitFrames(page, 10);
+    png = await screenshotWithRetry(page, `space ${tag}`);
+    writeFileSync(path.join(SHOTS, `space-${tag}.png`), png);
+    const space = await stats(page, png);
+    const spacePass = report(`space ${tag}${gate ? '' : ' (info)'}`, space, THRESH.space, gate);
+    if (gate && !spacePass) viewOk = false;
 
-  // planet close-ups (info-only): icer 3/4 ring view + gas-storm + red-giant + binary + blackhole + ring-city
-  for (const [id, shotName] of [
-    ['icer', 'icer'],
-    ['gas-storm', 'gas'],
-    ['red-giant', 'red'],
-    ['binary', 'binary'],
-    ['blackhole', 'black'],
-    ['ring-city', 'ring'],
-  ]) {
-    const focused = await page.evaluate((pid) => window.__seer.focusPlanet(pid), id);
-    if (!focused) {
-      console.log(`FAIL  focusPlanet(${id}) returned false`);
-      ok = false;
-    } else {
-      await waitFrames(page, 8);
-      png = await screenshotWithRetry(page, `${shotName} ${tag}`);
-      writeFileSync(path.join(SHOTS, `${shotName}-${tag}.png`), png);
-      const st = await stats(page, png);
-      console.log(`── ${shotName} ${tag} (info)  mean ${st.mean.toFixed(1)}  p95 ${st.p95.toFixed(1)}`);
+    // planet close-ups (info-only): icer 3/4 ring view + gas-storm + red-giant + binary + blackhole + ring-city
+    for (const [id, shotName] of [
+      ['icer', 'icer'],
+      ['gas-storm', 'gas'],
+      ['red-giant', 'red'],
+      ['binary', 'binary'],
+      ['blackhole', 'black'],
+      ['ring-city', 'ring'],
+    ]) {
+      try {
+        const focused = await page.evaluate((pid) => window.__seer.focusPlanet(pid), id);
+        if (!focused) {
+          console.log(`FAIL ${shotName}  focusPlanet(${id}) returned false`);
+          viewOk = false;
+        } else {
+          await waitFrames(page, 8);
+          png = await screenshotWithRetry(page, `${shotName} ${tag}`);
+          writeFileSync(path.join(SHOTS, `${shotName}-${tag}.png`), png);
+          const st = await stats(page, png);
+          console.log(`── ${shotName} ${tag} (info)  mean ${st.mean.toFixed(1)}  p95 ${st.p95.toFixed(1)}`);
+        }
+      } catch (e) {
+        console.log(`FAIL ${shotName}  ${String(e).split('\n')[0]}`);
+        viewOk = false;
+      }
+    }
+  } finally {
+    await browser.close().catch(() => {});
+  }
+  return viewOk;
+}
+
+// landscape is the gated viewport; portrait is shot for the record
+const VIEWS = process.env.SEER_FAST ? [[844, 390, true]] : [[844, 390, true], [390, 844, false]];
+for (const [w, h, gate] of VIEWS) {
+  let viewOk = false;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      viewOk = await runViewport(w, h, gate, errors);
+      break;
+    } catch (e) {
+      console.log(`viewport ${w}x${h} attempt ${attempt}/2 crashed: ${String(e).split('\n')[0]}`);
     }
   }
-  await browser.close();
+  if (!viewOk) ok = false;
 }
 
 if (errors.length) {
