@@ -18,7 +18,7 @@
 | `gas-storm` | 气态巨行星 | 条纹云带 + 风暴眼、悬浮采集站 | 强引力警示（`gravity`，能量回充 ×0.8）+ 扫描得「风暴氦芯」+ 悬浮采集站作目视地标 | ✅ M7 上线（F701–F705，`7f169b1`） |
 | `binary` | 双星系 | 冷白/暖橙两颗恒星 + 双色温照明 + 冷暖双半球行星与晨昏环带 | 双星光子场（`photon`，能量回充 ×1.3，青色警示）+ 扫描得「双星等离子」 | ✅ M9 上线（F901–F905） |
 | `blackhole` | 黑洞边缘 | 引力透镜光晕、吸积盘、时间膨胀提示 | 危险区：进入后 HUD 时钟加速、超出半径自动弹出 | ✅ M10 上线（F1001–F1005） |
-| `ring-city` | 环形城市 | 人造环、窗光密集、可停靠 | 停靠补给、情报商（解锁下一星球） | 未开始 |
+| `ring-city` | 环形城市 | 人造环、窗光密集、可停靠 | 停靠补给、情报商（解锁下一星球） | ✅ M11 上线（F1109–F1113） |
 
 ## 已有星球（M2 铺设，M5 起可扫描）
 
@@ -66,6 +66,14 @@
 4. ✅ HUD 与反馈（`src/render/hud.ts`、`src/main.ts`）：顶部青色 `潮汐力场·回充 ×0.7` 警示条；飞行面板实时显示「本地时间 ×1.4」类时间膨胀数字；crush 自动弹开时给出一次性视觉反馈。
 5. ✅ 观感门槛与特写实测（`scripts/measure-look.mjs`，2026-11-22，844×390）：cabin `mean 126.17 / darkFrac 0.01 / p95 196.30`、space `mean 92.37 / p95 177.89`；特写 info：icer `91.2/178.2`、gas `77.8/199.4`、red `87.9/217.1`、binary `91.7/174.2`、**black `107.3/250.0`**；竖屏 cabin info `mean 140.96`。
 
-下一颗候选：`ring-city`（环形城市，人造环 + 密集窗光 + 停靠补给/情报商）。
+## `ring-city` 交付清单（M11）
+
+1. ✅ 停靠状态机与补给奖励（`src/game/dock.ts`、`src/game/dock.test.ts`）：`dockState(distance, radius, speed)` 输出 `far` / `approach` / `hold` / `docked`；按住 2.5 s 完成停靠，离开时进度衰减，`docked` 后 60 s 冷却；`dockReward()` 补满能量并产出「环城通行密钥」+ 观测日志 —— `faeb208`
+2. ✅ `measure-look` 加固：等待 `space` 上限 300 s、截图 `timeout 240 s`、逐星球 `try/catch`、视口失败后重试一次 —— `242c59f`
+3. ✅ 主循环与 HUD：停靠接入 `main.ts`；HUD 补给进度条 `#dockProg` / `hud.ts setDock()`；停靠完成写 `seer.archive` 并补满能量 —— `a87765d`
+4. ✅ 视觉回归：环城护盾读成淡蓝能量壳（rim pow 3.6→2.5，alpha `0.05 + rim × 0.30`，上限 0.30）；窗光 gain 2.05→1.35，未点亮窗比例 0.22→0.28 —— `08553e8`
+5. ✅ M11 look-gate 截图：`ring-844x390.png` / `ring-390x844.png`；`node scripts/measure-look.mjs` → `LOOK OK`（844×390 ring `61.5/139.7`、390×844 ring `59.0/142.4`）；单元测试 57 pass，`node e2e/smoke.mjs` → `SMOKE OK` —— `74d0388`
+
+下一颗候选：待定。
 
 进度标记：⏳ 进行中 · ✅ 已上线（带提交 hash）· 未开始

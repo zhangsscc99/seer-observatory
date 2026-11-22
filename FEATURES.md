@@ -147,3 +147,13 @@ npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measu
 | T11 | 黑洞特写仍读成「正面同心漩涡/传送门」：吸积盘缺椭圆透视与前后遮挡，光子环是柔光描边不是锐利细环（M10 评审） | `e2e/shots/black-844x390.png` | 盘面倾角 18–22°、黑洞挡住盘后缘；0.99–1.01R 有白热锐环；左右亮度比 ≥1.8 |
 | T12 | 黑洞场景里飞船是剪影，看不到盘面溢光/轮廓光，暗面死黑 | 同上 | 飞船朝黑洞一侧亮、背面暗，暗面底色 ≥0.10 |
 | T13 | 舱内材质读成「均匀亮面塑料」：金属/哑光塑料/玻璃分不出，缺定向主光与接触阴影（视审：Demo 感明显） | `e2e/shots/cabin-844x390.png` | 金属 roughness 0.2–0.4 / 塑料 0.7 对比可见；有明确主光方向；座椅与平台脚下有接触阴影 |
+
+## M11 环形城市 ring-city（F1109–F1113）
+
+| # | 功能 | verify |
+| --- | --- | --- |
+| 11.1 | 停靠状态机纯逻辑：`dockState(distance, radius, speed)` → `far` / `approach` / `hold` / `docked`；按住 2.5 s 完成停靠，离开时进度衰减，`docked` 后 60 s 冷却；`dockReward()` 补满能量 + 「环城通行密钥」+ 观测日志 | `node --test --test-name-pattern="dock" src/game/` |
+| 11.2 | `measure-look` 加固：等待 `space` 上限 300 s、截图 `timeout 240 s`、逐星球 `try/catch`、视口失败后重试一次 | `grep -n "timeout: 240000\|i < 1200\|attempt <= 2" scripts/measure-look.mjs` |
+| 11.3 | 停靠接入主循环与 HUD：`hud.ts setDock()` 驱动补给进度条，停靠完成写 `seer.archive` 并补满能量 | `grep -n "setDock" src/render/hud.ts src/main.ts` |
+| 11.4 | 环城视觉回归：护盾淡蓝能量壳（rim pow 2.5，alpha `0.05 + rim × 0.30`，上限 0.30）；窗光 gain 1.35，未点亮窗比例 0.28 | `grep -n "rim \* 0.30\|1.35, 1.35, 1.35\|v < 0.28" src/render/space.ts` |
+| 11.5 | M11 look-gate 截图：横竖屏 `ring-844x390.png` / `ring-390x844.png`，`measure-look` → `LOOK OK` | `ls e2e/shots/ring-*.png` |
