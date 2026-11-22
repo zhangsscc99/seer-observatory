@@ -1290,3 +1290,390 @@ export function magnetarTextures(p: PlanetDef): { map: THREE.Texture; emissive: 
   }
   return { map, emissive, rough };
 }
+
+/** Procedural 1024×512 equirectangular PBR maps + two 256×256 seamless scrolling water
+ *  normal maps for `saltflat` (「汐原 · 盐晶潮滩」).
+ *  - `map`: warm-ivory evaporite polygonal salt crust (2-scale Voronoi 26×13 + 64×32 with bright
+ *    raised salt ridges), meandering dark mineral tidal channels, and submerged shallow-to-deep
+ *    turquoise/jade brine basins.
+ *  - `normal`: Sobel tangent-space normal map capturing 3D salt pressure ridges & carved channels.
+ *  - `rough`: matte salt flats (0.74–0.88), sparkling salt ridges (0.44), glassy brine (0.045).
+ *  - `waterData`: R = signed water depth (0.5 = shoreline, >0.5 brine depth, <0.5 dry crust),
+ *    G = high-frequency shoreline crystallization noise, B = raised halite ridge sparkle mask.
+ *  - `waterNrmA` / `waterNrmB`: two seamless tileable canvas normal maps (Saltline Tn.water + Sobel
+ *    recipe) scrolled at multiple repeats & velocities in the water shader. */
+export function saltflatTextures(p: PlanetDef): {
+  map: THREE.Texture;
+  normal: THREE.Texture;
+  rough: THREE.Texture;
+  waterData: THREE.Texture;
+  waterNrmA: THREE.Texture;
+  waterNrmB: THREE.Texture;
+} {
+  const ss = (a: number, b: number, x: number): number => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+  const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
+  const mix3 = (a: number[], b: number[], t: number): [number, number, number] => [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+  ];
+
+  // Seamless 2D periodic fBM → Saltline 8-neighbor Sobel tangent-space water normal map
+  const makeWaterNormal = (seed: number, fx: number, fy: number, octaves: number, bumpK: number, crossBias: number): THREE.CanvasTexture => {
+    const S = 256;
+    const rnd = mulberry32(seed);
+    const N = 64;
+    const grid = new Float32Array(N * N);
+    for (let i = 0; i < grid.length; i++) grid[i] = rnd();
+    const samplePeriodic = (x: number, y: number, px: number, py: number): number => {
+      const xi = Math.floor(x);
+      const yi = Math.floor(y);
+      const tx = x - xi;
+      const ty = y - yi;
+      const ux = tx * tx * (3 - 2 * tx);
+      const uy = ty * ty * (3 - 2 * ty);
+      const at = (ix: number, iy: number): number => {
+        const wx = (((ix % px) + px) % px) % N;
+        const wy = (((iy % py) + py) % py) % N;
+        return grid[wy * N + wx];
+      };
+      const a = at(xi, yi);
+      const b = at(xi + 1, yi);
+      const c = at(xi, yi + 1);
+      const d = at(xi + 1, yi + 1);
+      return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+    };
+    const hBuf = new Float32Array(S * S);
+    for (let y = 0; y < S; y++) {
+      const v = y / S;
+      for (let x = 0; x < S; x++) {
+        const u = x / S;
+        // Blend primary wave train + cross-wave fetch for authentic liquid capillary ripples
+        let sum = 0;
+        let amp = 0.5;
+        let norm = 0;
+        let f = 1;
+        for (let o = 0; o < octaves; o++) {
+          const px = fx * f;
+          const py = fy * f;
+          const w1 = samplePeriodic(u * px, v * py, px, py);
+          const w2 = samplePeriodic((u + 0.31) * py, (v + 0.17) * px, py, px);
+          sum += (w1 * (1 - crossBias) + w2 * crossBias) * amp;
+          norm += amp;
+          amp *= 0.5;
+          f *= 2;
+        }
+        hBuf[y * S + x] = sum / norm;
+      }
+    }
+    const [cn, gn] = canvas(S, S);
+    const img = gn.createImageData(S, S);
+    const wrap = (i: number): number => (i + S) % S;
+    for (let y = 0; y < S; y++) {
+      const ym = wrap(y - 1);
+      const yp = wrap(y + 1);
+      for (let x = 0; x < S; x++) {
+        const xm = wrap(x - 1);
+        const xp = wrap(x + 1);
+        const l = hBuf[y * S + xm];
+        const r = hBuf[y * S + xp];
+        const d = hBuf[ym * S + x];
+        const u = hBuf[yp * S + x];
+        const ld = hBuf[ym * S + xm];
+        const rd = hBuf[ym * S + xp];
+        const lu = hBuf[yp * S + xm];
+        const ru = hBuf[yp * S + xp];
+        const gx = (r - l) * 0.5 + (ru + rd - lu - ld) * 0.25;
+        const gy = (u - d) * 0.5 + (ru + lu - rd - ld) * 0.25;
+        const nx = -gx * bumpK;
+        const ny = -gy * bumpK;
+        const nz = 1.0;
+        const inv = 1 / Math.hypot(nx, ny, nz);
+        const idx = (y * S + x) * 4;
+        img.data[idx] = Math.round(clamp01(nx * inv * 0.5 + 0.5) * 255);
+        img.data[idx + 1] = Math.round(clamp01(ny * inv * 0.5 + 0.5) * 255);
+        img.data[idx + 2] = Math.round(clamp01(nz * inv * 0.5 + 0.5) * 255);
+        img.data[idx + 3] = 255;
+      }
+    }
+    gn.putImageData(img, 0, 0);
+    const t = tex(cn, false);
+    t.wrapS = THREE.RepeatWrapping;
+    t.wrapT = THREE.RepeatWrapping;
+    return t;
+  };
+
+  // Layer A: Saltline Tn.water style medium fetch swells (6x10 base)
+  const waterNrmA = makeWaterNormal(p.seed + 301, 6, 10, 4, 8.5, 0.28);
+  // Layer B: Finer criss-cross wind capillary ripples (12x18 base)
+  const waterNrmB = makeWaterNormal(p.seed + 607, 12, 18, 3, 7.2, 0.46);
+
+  const W = 1024;
+  const H = 512;
+  const [cMap, gMap] = canvas(W, H);
+  const [cNrm, gNrm] = canvas(W, H);
+  const [cRgh, gRgh] = canvas(W, H);
+  const [cDat, gDat] = canvas(W, H);
+  const imgMap = gMap.createImageData(W, H);
+  const imgNrm = gNrm.createImageData(W, H);
+  const imgRgh = gRgh.createImageData(W, H);
+  const imgDat = gDat.createImageData(W, H);
+  const hBuf = new Float32Array(W * H);
+
+  const nMacro = makeNoise(p.seed + 7, 4);
+  const nMid = makeNoise(p.seed + 23, 8);
+  const nFine = makeNoise(p.seed + 53, 16);
+  const nWarp = makeNoise(p.seed + 79, 8);
+  const nChan1 = makeNoise(p.seed + 113, 6);
+  const nChan2 = makeNoise(p.seed + 149, 10);
+  const nShore = makeNoise(p.seed + 191, 32);
+
+  // Two-scale tileable-in-x Voronoi grids for polygonal evaporite salt-flat plates
+  const makeGrid = (nx: number, ny: number, salt: number): { px: Float32Array; py: Float32Array; hash: Float32Array; nx: number; ny: number } => {
+    const px = new Float32Array(nx * ny);
+    const py = new Float32Array(nx * ny);
+    const hash = new Float32Array(nx * ny);
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        const idx = j * nx + i;
+        px[idx] = i + 0.16 + 0.68 * vhash(i * 19 + salt, j * 31 + salt);
+        py[idx] = j + 0.16 + 0.68 * vhash(i * 37 + salt, j * 17 + salt);
+        hash[idx] = vhash(i * 53 + salt, j * 43 + salt);
+      }
+    }
+    return { px, py, hash, nx, ny };
+  };
+  const gMacro = makeGrid(42, 21, p.seed * 3 + 17);
+  const gPoly = makeGrid(96, 48, p.seed * 7 + 41);
+
+  const voronoi = (
+    u: number,
+    v: number,
+    grid: { px: Float32Array; py: Float32Array; hash: Float32Array; nx: number; ny: number },
+  ): [number, number, number] => {
+    const { px, py, hash, nx, ny } = grid;
+    const gx = (((u % 1) + 1) % 1) * nx;
+    const gy = Math.max(0.001, Math.min(ny - 0.001, v * ny));
+    const ci = Math.floor(gx);
+    const cj = Math.floor(gy);
+    let f1 = 1e9;
+    let f2 = 1e9;
+    let cellH = 0.5;
+    for (let dj = -1; dj <= 1; dj++) {
+      const jj = cj + dj;
+      if (jj < 0 || jj >= ny) continue;
+      for (let di = -1; di <= 1; di++) {
+        const ii = (((ci + di) % nx) + nx) % nx;
+        const idx = jj * nx + ii;
+        let dx = gx - px[idx];
+        if (dx > nx * 0.5) dx -= nx;
+        else if (dx < -nx * 0.5) dx += nx;
+        const dy = gy - py[idx];
+        const d = dx * dx + dy * dy;
+        if (d < f1) {
+          f2 = f1;
+          f1 = d;
+          cellH = hash[idx];
+        } else if (d < f2) {
+          f2 = d;
+        }
+      }
+    }
+    return [Math.sqrt(f2) - Math.sqrt(f1), Math.sqrt(f1), cellH];
+  };
+
+  // Evaporite salt-flat palette: luminous pearl-ivory halite crust + crisp white crystal ridges + dark slate tidal channels + turquoise-jade brine
+  const saltIvory: [number, number, number] = [242, 240, 232];
+  const saltWarm: [number, number, number] = [214, 212, 202];
+  const saltDamp: [number, number, number] = [164, 212, 214];
+  const saltRidgeWhite: [number, number, number] = [255, 254, 250];
+  const channelSilt: [number, number, number] = [50, 72, 78];
+  const channelBank: [number, number, number] = [132, 140, 136];
+  const brineShallow: [number, number, number] = [78, 186, 192];
+  const brineMid: [number, number, number] = [20, 102, 122];
+  const brineDeep: [number, number, number] = [8, 44, 64];
+  const polarSalt: [number, number, number] = [228, 242, 246];
+
+  const wrapDeltaU = (a: number, b: number): number => {
+    let d = a - b;
+    if (d > 0.5) d -= 1;
+    else if (d < -0.5) d += 1;
+    return d;
+  };
+
+  for (let y = 0; y < H; y++) {
+    const lat = (y + 0.5) / H; // 0 = north pole, 0.5 = equator, 1 = south pole
+    const absLat = Math.abs(lat - 0.5);
+    const poleShelf = ss(0.32, 0.49, absLat);
+    const poleDamp = 1 - ss(0.39, 0.49, absLat) * 0.55;
+
+    for (let x = 0; x < W; x++) {
+      const uNorm = (x + 0.5) / W;
+      const wx = (nWarp(uNorm * 8, lat * 4) - 0.5) * 0.065;
+      const wy = (nWarp(uNorm * 8 + 3.7, lat * 4 + 2.9) - 0.5) * 0.055;
+      const uW = uNorm + wx;
+      const vW = Math.max(0.002, Math.min(0.998, lat + wy));
+
+      const m1 = nMacro(uW * 4, vW * 2);
+      const m2 = nMid(uW * 8 + 1.3, vW * 4 + 2.1);
+      const m3 = nFine(uNorm * 16 + wx * 3, lat * 8 + wy * 3);
+      const fbmShore = nShore(uNorm * 32, lat * 16) * 0.65 + nFine(uNorm * 16 + 7.1, lat * 8 + 4.3) * 0.35;
+
+      // Natural global topography: interlocking evaporite shelves and broad shallow brine seas
+      let elev = m1 * 0.56 + m2 * 0.30 + m3 * 0.14 + poleShelf * 0.22;
+
+      // Sculpt planetary tidal basins + salt-flat archipelagos (warped organically by wx/wy so coastlines stay jagged & natural):
+      // 1) Great Mirror Brine Sea sweeping across the sunlit middle-right specular zone (u≈0.525, lat≈0.43)
+      const duSea = wrapDeltaU(uW, 0.530) / 0.145;
+      const dvSea = (vW - 0.430) / 0.175;
+      const seaBasin = Math.exp(-(duSea * duSea + dvSea * dvSea));
+      // 2) Southern shallow brine arm curving across center-south (u≈0.42, lat≈0.58)
+      const duArm = wrapDeltaU(uW, 0.420) / 0.115;
+      const dvArm = (vW - 0.585) / 0.105;
+      const seaArm = Math.exp(-(duArm * duArm + dvArm * dvArm));
+      // 3) Western-central polygonal salt-crust plateau (u≈0.35, lat≈0.39) framing sunlit flats & cool terminator
+      const duPlat = wrapDeltaU(uW, 0.350) / 0.125;
+      const dvPlat = (vW - 0.395) / 0.155;
+      const saltPlateau = Math.exp(-(duPlat * duPlat + dvPlat * dvPlat));
+      // 4) Emergent salt barrier spit & small islet jutting into the mirror sea so the specular band breaks across dry salt shores
+      const duSpit = wrapDeltaU(uW, 0.495) / 0.052;
+      const dvSpit = (vW - 0.495) / 0.028;
+      const saltSpit = Math.exp(-(duSpit * duSpit + dvSpit * dvSpit));
+      const duIsle = wrapDeltaU(uW, 0.568) / 0.030;
+      const dvIsle = (vW - 0.392) / 0.024;
+      const saltIsle = Math.exp(-(duIsle * duIsle + dvIsle * dvIsle));
+
+      elev = elev - seaBasin * 0.25 - seaArm * 0.16 + saltPlateau * 0.21 + saltSpit * 0.22 + saltIsle * 0.20;
+
+      // Meandering dark dry tidal channels / braided riverbeds snaking across emergent salt flats
+      const chDist1 = Math.abs(nChan1(uNorm * 6 + wx * 4.4, lat * 3 + wy * 4.4) - 0.5);
+      const chDist2 = Math.abs(nChan2(uNorm * 10 - wy * 3.8 + 2.3, lat * 5 + wx * 3.8 + 1.1) - 0.5);
+      const chBranch = ss(0.28, 0.66, m2);
+      const mainChan = ss(0.032, 0.006, chDist1) * (1 - poleShelf * 0.7);
+      const secChan = ss(0.024, 0.005, chDist2) * chBranch * (1 - poleShelf * 0.8);
+      const chanCore = Math.min(1, mainChan + secChan * 0.82);
+      const chanBankMask = Math.min(1, (ss(0.058, 0.020, chDist1) + ss(0.044, 0.015, chDist2) * chBranch) * (1 - poleShelf * 0.75)) * (1 - chanCore * 0.68);
+      const chanLevee = Math.min(1, ss(0.074, 0.048, chDist1) * ss(0.028, 0.048, chDist1)) * (1 - poleShelf * 0.8);
+
+      const waterLevel = 0.478;
+      // Carve channels subtly into dry salt terrain; deepest centerline near lagoon holds thin residual brine
+      const drySide = ss(waterLevel - 0.03, waterLevel + 0.05, elev);
+      const carvedElev = elev - chanCore * 0.08 * drySide;
+      const signedDepth = waterLevel - carvedElev; // >0 = flooded brine, <0 = emergent dry salt crust
+
+      // Two-scale Voronoi polygonal salt crust (fine crisp 96x48 crystalline polygons + 42x21 pan terraces)
+      const [edgeM, rM, hashM] = voronoi(uNorm + wx * 0.26, Math.max(0.002, Math.min(0.998, lat + wy * 0.26)), gMacro);
+      const [edgeP, rP, hashP] = voronoi(uNorm + wx * 0.16, Math.max(0.002, Math.min(0.998, lat + wy * 0.16)), gPoly);
+
+      // Raised bright crystalline salt pressure ridges (delicate white halite ridges, NOT dark mud cracks!)
+      const macroRidge = ss(0.078, 0.012, edgeM + (fbmShore - 0.5) * 0.014) * poleDamp;
+      const polyRidge = ss(0.110, 0.018, edgeP + (m3 - 0.5) * 0.016) * poleDamp;
+      // Minimal shallow depression beside ridges so they read as crisp raised salt crystals, not deep clay fissures
+      const ridgeTrough = ss(0.15, 0.09, edgeP) * (1 - polyRidge) * poleDamp;
+      const ridgeVal = Math.min(1, polyRidge * 0.90 + macroRidge * 0.48);
+
+      // Emergent salt crust albedo: subtle per-cell mineral variation + raised white halite ridges + dark dry channels
+      const panTone = clamp01(hashM * 0.35 + hashP * 0.30 + m3 * 0.35);
+      let crustCol = mix3(saltWarm, saltIvory, ss(0.15, 0.85, panTone));
+      // Damp intertidal salt flats near shoreline pick up subtle aquamarine brine saturation
+      const dampBelt = ss(-0.14, 0.01, signedDepth) * (1 - ss(0.0, 0.03, signedDepth));
+      crustCol = mix3(crustCol, saltDamp, dampBelt * (0.48 + 0.34 * fbmShore));
+      // Very subtle interior tint vs bright crisp white raised salt ridges
+      crustCol = mix3(crustCol, [196, 198, 194], ridgeTrough * 0.08);
+      crustCol = mix3(crustCol, saltRidgeWhite, ridgeVal * 0.85);
+      // Carve distinct meandering dark mineral-silt dry tidal channels & bright evaporite levees across emergent crust
+      crustCol = mix3(crustCol, channelBank, chanBankMask * 0.58);
+      crustCol = mix3(crustCol, channelSilt, chanCore * 0.86);
+      crustCol = mix3(crustCol, saltRidgeWhite, chanLevee * 0.62);
+      // Cool polar evaporite frost near poles
+      crustCol = mix3(crustCol, polarSalt, poleShelf * 0.65);
+
+      // Submerged brine basin bed albedo: shallow turquoise (submerged polygons visible) → jade → deep mirror teal
+      const waterDepth = Math.max(0, signedDepth);
+      let waterBed = mix3(brineShallow, brineMid, ss(0.0, 0.22, waterDepth));
+      waterBed = mix3(waterBed, brineDeep, ss(0.18, 0.50, waterDepth));
+      // Ghostly submerged polygonal salt rings visible through crystal-clear shallow brine
+      const subPoly = polyRidge * (1 - ss(0.0, 0.26, waterDepth));
+      waterBed = mix3(waterBed, [148, 226, 224], subPoly * 0.44);
+
+      const inWater = ss(-0.008, 0.022, signedDepth);
+      const albedo = mix3(crustCol, waterBed, inWater);
+
+      // Heightfield for static tangent-space normal map (gentle crystalline ridge relief, zeroed under water)
+      const dryMask = 1 - ss(-0.005, 0.035, signedDepth);
+      const dish = (1 - ss(0.0, 0.65, rP)) * 0.018 + (1 - ss(0.0, 0.65, rM)) * 0.012;
+      const height = (elev * 0.28 + polyRidge * 0.11 + macroRidge * 0.07 - dish - chanCore * 0.28 + chanLevee * 0.08) * dryMask;
+      hBuf[y * W + x] = height;
+
+      // Roughness: matte dry salt pans (0.74..0.88), sparkling halite ridges (0.44), damp channels (0.38), mirror brine (0.05)
+      let roughVal = 0.76 + (1 - panTone) * 0.11 - ridgeVal * 0.30 - dampBelt * 0.22 - chanCore * 0.34;
+      roughVal = roughVal * (1 - inWater) + 0.05 * inWater;
+      const rByte = Math.round(clamp01(roughVal) * 255);
+
+      const idx = (y * W + x) * 4;
+      imgMap.data[idx] = Math.min(255, Math.round(albedo[0]));
+      imgMap.data[idx + 1] = Math.min(255, Math.round(albedo[1]));
+      imgMap.data[idx + 2] = Math.min(255, Math.round(albedo[2]));
+      imgMap.data[idx + 3] = 255;
+
+      imgRgh.data[idx] = rByte;
+      imgRgh.data[idx + 1] = rByte;
+      imgRgh.data[idx + 2] = rByte;
+      imgRgh.data[idx + 3] = 255;
+
+      // Water data map: R = signed depth (0.5 = shoreline), G = shoreline crystallization noise, B = halite ridge sparkle
+      imgDat.data[idx] = Math.round(clamp01(0.5 + signedDepth * 1.15) * 255);
+      imgDat.data[idx + 1] = Math.round(clamp01(fbmShore) * 255);
+      imgDat.data[idx + 2] = Math.round(clamp01(ridgeVal * dryMask) * 255);
+      imgDat.data[idx + 3] = 255;
+    }
+  }
+
+  // Sobel tangent-space normal map from static salt-crust heightfield (wrapping X, clamping Y)
+  const bumpStrength = 2.6;
+  for (let y = 0; y < H; y++) {
+    const ym = Math.max(0, y - 1);
+    const yp = Math.min(H - 1, y + 1);
+    for (let x = 0; x < W; x++) {
+      const xm = (x - 1 + W) % W;
+      const xp = (x + 1) % W;
+      const l = hBuf[y * W + xm];
+      const r = hBuf[y * W + xp];
+      const d = hBuf[ym * W + x];
+      const u = hBuf[yp * W + x];
+      const ld = hBuf[ym * W + xm];
+      const rd = hBuf[ym * W + xp];
+      const lu = hBuf[yp * W + xm];
+      const ru = hBuf[yp * W + xp];
+      const gx = (r - l) * 0.5 + (ru + rd - lu - ld) * 0.25;
+      const gy = (u - d) * 0.5 + (ru + lu - rd - ld) * 0.25;
+      const nx = -gx * bumpStrength;
+      const ny = -gy * bumpStrength;
+      const nz = 1.0;
+      const inv = 1 / Math.hypot(nx, ny, nz);
+      const idx = (y * W + x) * 4;
+      imgNrm.data[idx] = Math.round(clamp01(nx * inv * 0.5 + 0.5) * 255);
+      imgNrm.data[idx + 1] = Math.round(clamp01(ny * inv * 0.5 + 0.5) * 255);
+      imgNrm.data[idx + 2] = Math.round(clamp01(nz * inv * 0.5 + 0.5) * 255);
+      imgNrm.data[idx + 3] = 255;
+    }
+  }
+
+  gMap.putImageData(imgMap, 0, 0);
+  gNrm.putImageData(imgNrm, 0, 0);
+  gRgh.putImageData(imgRgh, 0, 0);
+  gDat.putImageData(imgDat, 0, 0);
+
+  const map = tex(cMap);
+  const normal = tex(cNrm, false);
+  const rough = tex(cRgh, false);
+  const waterData = tex(cDat, false);
+  for (const t of [map, normal, rough, waterData]) {
+    t.wrapS = THREE.RepeatWrapping;
+    t.wrapT = THREE.ClampToEdgeWrapping;
+  }
+  return { map, normal, rough, waterData, waterNrmA, waterNrmB };
+}

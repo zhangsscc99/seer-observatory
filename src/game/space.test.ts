@@ -20,6 +20,7 @@ test('hazards follow the sector design table', () => {
   assert.equal(planetById('blackhole')!.hazard, 'tidal');
   assert.equal(planetById('ring-city')!.hazard, 'traffic');
   assert.equal(planetById('magnetar')!.hazard, 'magnetic');
+  assert.equal(planetById('saltflat')!.hazard, 'brine');
 });
 
 test('icer: ice-ring planet registered and scannable', () => {
@@ -178,6 +179,37 @@ test('magnetar: registered, non-overlapping, inside sector, forward reachable, m
   const eff = hazardEffect(p.hazard);
   assert.equal(eff.energyMul, 0.75);
   assert.equal(eff.warn, '强磁暴场·回充 ×0.75');
+});
+
+test('saltflat: registered, non-overlapping, inside sector, brine hazard and scan log valid', () => {
+  const p = planetById('saltflat');
+  assert.ok(p);
+  assert.equal(p.name, '汐原 · 盐晶潮滩');
+  assert.equal(p.kind, 'saltflat');
+  assert.equal(p.hazard, 'brine');
+  assert.equal(p.radius, 105);
+  assert.equal(p.seed, 217);
+  assert.deepEqual(p.pos, { x: -1250, y: -60, z: 420 });
+  assert.ok(TARGETS.includes('saltflat'));
+  assert.equal(TARGETS.filter((id) => id === 'saltflat').length, 1);
+  const distOrigin = Math.hypot(p.pos.x, p.pos.y, p.pos.z);
+  assert.ok(distOrigin <= SECTOR_RADIUS, `saltflat at ${distOrigin.toFixed(1)} > ${SECTOR_RADIUS}`);
+  for (const other of PLANETS) {
+    if (other.id === 'saltflat') continue;
+    const d = Math.hypot(p.pos.x - other.pos.x, p.pos.y - other.pos.y, p.pos.z - other.pos.z);
+    assert.ok(d > p.radius + other.radius + 100, `saltflat vs ${other.id}: ${d.toFixed(1)} <= ${p.radius + other.radius + 100}`);
+  }
+  const res = scanResult('saltflat');
+  assert.equal(res.resource, '盐晶卤水样本');
+  assert.ok(res.amount >= 3 && res.amount <= 7, `amount ${res.amount}`);
+  const len = [...res.log].length;
+  assert.ok(len >= 40, `log length ${len} < 40`);
+  assert.match(res.log, /盐壳多边形/);
+  assert.match(res.log, /卤水镜面/);
+  assert.match(res.log, /卤雾/);
+  const eff = hazardEffect(p.hazard);
+  assert.equal(eff.energyMul, 0.85);
+  assert.equal(eff.warn, '高盐卤雾·回充 ×0.85');
 });
 
 test('planet bounding spheres never overlap', () => {

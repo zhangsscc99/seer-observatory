@@ -134,7 +134,9 @@ var PLANETS = [
   { id: "ring-city", name: "\u73AF\u5F62\u57CE\u5E02 \xB7 \u62FE\u5149", pos: { x: 260, y: -150, z: -1330 }, radius: 130, hazard: "traffic", colors: [1317412, 16757860, 15398143], atmosphere: 10475775, kind: "ring-city", seed: 131 },
   // 磁暴星域 · 岚弧: deep magnetized indigo-slate iron crust + vivid emerald-teal fissures & mint-cyan dipole plasma arcs
   // (emerald-teal primary palette is visually distinct from all 6 prior worlds: ice-blue, orange-red, ochre, blue/orange, violet/gold, steel/amber)
-  { id: "magnetar", name: "\u78C1\u66B4\u661F\u57DF \xB7 \u5C9A\u5F27", pos: { x: -720, y: -120, z: -1020 }, radius: 100, hazard: "magnetic", colors: [1254973, 1632440, 12124144], atmosphere: 2683596, kind: "magnetar", seed: 149 }
+  { id: "magnetar", name: "\u78C1\u66B4\u661F\u57DF \xB7 \u5C9A\u5F27", pos: { x: -720, y: -120, z: -1020 }, radius: 100, hazard: "magnetic", colors: [1254973, 1632440, 12124144], atmosphere: 2683596, kind: "magnetar", seed: 149 },
+  // 汐原 · 盐晶潮滩: warm-ivory polygonal evaporite salt crust + shallow mirror-like turquoise brine flats & cool-cyan brine mist
+  { id: "saltflat", name: "\u6C50\u539F \xB7 \u76D0\u6676\u6F6E\u6EE9", pos: { x: -1250, y: -60, z: 420 }, radius: 105, hazard: "brine", colors: [1202796, 14208440, 16249574], atmosphere: 11726836, kind: "saltflat", seed: 217 }
 ];
 var TARGETS = PLANETS.map((p) => p.id);
 var SUN_DIR = (() => {

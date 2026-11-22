@@ -222,6 +222,24 @@
   - **偶极壳尘粒**：360 颗 `Points`（`L ∈ 1.45..2.75R`，`size = 0.048R`，`opacity 0.72` additive，随 `dustMotes` 以 `0.008 rad/s` 慢转）
 - **特写机位**：`focusPlanet('magnetar')` 位于 `4.2R`、磁赤道上方 `18°`、向太阳偏转 `46°`、机头微压 `0.08 rad`（横屏 `focusFovV = 66°`，竖屏 `104°`），兼顾铁壳昼夜交界与偶极弧笼全景，星体盘面浮于飞船上方不被遮挡。
 
+## 盐晶潮滩（saltflat，M14）
+
+「汐原 · 盐晶潮滩」：暖象牙多边形蒸发盐壳 + 极浅高盐卤水镜面。液体表面**照抄 Saltline 配方**（滚动法线 + 菲涅尔 + 环境反射 + 窄反光带 + 岸线结晶带），全部 `onBeforeCompile` 注入，零后处理、零外部素材。
+
+| 要素 | 参数（`buildSaltflat()` / `saltflatTextures()`） |
+| --- | --- |
+| 盐壳 PBR | 1024×512 equirect：六边形 Voronoi 盐壳裂纹 + 潮沟暗带 + 水体 SDF（`waterData.r`=深度 `.g`=湍流 `.b`=盐脊）+ 两张 256×256 周期 fBM 8 邻域 Sobel 水面法线（`waterNrmA/B`） |
+| 滚动法线 | 3 层：`repeat 13 / 27 / 44`，速度 `(0.018,-0.009) / (-0.024,0.015) / (0.013,0.027)` rad/s；低频阵风图区分平静镜面 slick 与波纹区（roughness 0.036–0.105）+ 长涌 `sin(dot(wUv,(24,-13)) - 0.42t)` |
+| 菲涅尔 | Schlick `0.05 + 0.95·pow(1-NdV,5)`：直视见浅青卤水底，掠射变纯天空镜面 |
+| 环境反射 | `scene.environment` IBL 放大：水区 radiance `×(2.15 + 2.6·fresnel)`；另有 `sfSkyCloudMirror` 沿 `reflect(-V,N)` 的天空/云影镜面，权重 `(0.38+0.62·fresnel)·mix(0.16,1.0,dayWrap)` |
+| 太阳反光带 | core `pow(dot(R,V),220)×4.8·sparkle` + 各向异性 ribbon `pow 64×1.35` + sheen `pow 18×0.22`，色 `vec3(1.0,0.96,0.84)`；反光向量沿风fetch横向拉伸成带 |
+| 岸线结晶带 | SDF `|rawDepth| < 0.022+0.058·noise` 阈值 + 噪声判定 → `sfShoreFoam`：反照抬到白 `0.95,0.97,0.99`、roughness 0.52、水色法线权重 ×0.65 |
+| 水体色 | 浅 `bed×(0.84,1.02,1.05) ↔ (0.09,0.34,0.38)`，深 `(0.008,0.042,0.068)`，`pow(depth,0.72)` 插值；水下底面折射偏移 0.004 |
+| 光照 | 专属暖金 `0xf7e9c8` 系定向主光（低角度斜射，仅 `near` 组）+ 冷青卤水反弹点光；昼夜 `smoothstep(-0.18,0.36,NdL)` 定向建模，夜侧反照保底 ≥0.085 |
+| 大气 | 1.05R 窄亮边（peakPow 5.8 gain 0.56）+ 1.16R 宽雾（2.9/0.42）双层 fresnel halo、晨昏线偏冷青；1.02R 卤雾壳 opacity ≤0.10；160 颗 1.06–1.34R 逆光盐晶尘粒（instanced） |
+| 特写 | `focusPlanet('saltflat')` 4.0R、`dir (0.88,0.18,0.44)`（~73° 太阳夹角）：反光带+盐壳+晨昏边缘同框；measure-look 加 `salt` 项与 T14 HUD 文案断言 |
+| 实测 | 844×390：salt `74.9 / 168.1`（mean/p95）；390×844：`74.0 / 181.3`；cabin `122.24`、space `93.79` 不退化 |
+
 ## 3. 可读性要求
 
 硬指标（`scripts/measure-look.mjs`，844×390 横屏卡阈值；390×844 竖屏只记录）：

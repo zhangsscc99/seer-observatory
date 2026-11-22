@@ -252,15 +252,16 @@ async function runViewport(w, h, gate, errors) {
     const spacePass = report(`space ${tag}${gate ? '' : ' (info)'}`, space, THRESH.space, gate);
     if (gate && !spacePass) viewOk = false;
 
-    // planet close-ups (info-only): icer 3/4 ring view + gas-storm + red-giant + binary + blackhole + ring-city + magnetar
-    for (const [id, shotName] of [
-      ['icer', 'icer'],
-      ['gas-storm', 'gas'],
-      ['red-giant', 'red'],
-      ['binary', 'binary'],
-      ['blackhole', 'black'],
-      ['ring-city', 'ring'],
-      ['magnetar', 'mag'],
+    // planet close-ups (info-only): icer 3/4 ring view + gas-storm + red-giant + binary + blackhole + ring-city + magnetar + saltflat
+    for (const [id, shotName, planetName] of [
+      ['icer', 'icer', '冰环带'],
+      ['gas-storm', 'gas', '气态巨行星'],
+      ['red-giant', 'red', '红巨星系'],
+      ['binary', 'binary', '双子星域'],
+      ['blackhole', 'black', '黑洞边缘 · 弥夜'],
+      ['ring-city', 'ring', '环形城市 · 拾光'],
+      ['magnetar', 'mag', '磁暴星域 · 岚弧'],
+      ['saltflat', 'salt', '汐原 · 盐晶潮滩'],
     ]) {
       try {
         const focused = await page.evaluate((pid) => window.__seer.focusPlanet(pid), id);
@@ -269,6 +270,16 @@ async function runViewport(w, h, gate, errors) {
           viewOk = false;
         } else {
           await waitFrames(page, 8);
+          // T14: assert top goal line and scan bar both point to the focused planet
+          const hudTxt = await page.evaluate(() => ({
+            goal: document.getElementById('goal')?.textContent ?? '',
+            scanHidden: document.getElementById('scan')?.classList.contains('hidden') ?? true,
+            scanName: document.getElementById('scanName')?.textContent ?? '',
+          }));
+          if (!hudTxt.goal.includes(planetName) || hudTxt.scanHidden || !hudTxt.scanName.includes(planetName)) {
+            console.log(`FAIL ${shotName}  HUD target mismatch (expected "${planetName}", goal="${hudTxt.goal}", scan="${hudTxt.scanName}", hidden=${hudTxt.scanHidden})`);
+            viewOk = false;
+          }
           png = await screenshotWithRetry(page, `${shotName} ${tag}`);
           writeFileSync(path.join(SHOTS, `${shotName}-${tag}.png`), png);
           const st = await stats(page, png);
@@ -304,7 +315,7 @@ if (errors.length) {
   ok = false;
   console.log(`FAIL  js errors:\n${errors.join('\n')}`);
 }
-console.log(`shots: ${path.relative(ROOT, SHOTS)}/{cabin,space,gas,icer,red,binary,black,ring,mag}-{844x390,390x844}.png`);
+console.log(`shots: ${path.relative(ROOT, SHOTS)}/{cabin,space,gas,icer,red,binary,black,ring,mag,salt}-{844x390,390x844}.png`);
 console.log(ok ? 'LOOK OK' : 'LOOK FAILED');
 cleanup();
 process.exit(ok ? 0 : 1);

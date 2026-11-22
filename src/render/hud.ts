@@ -19,6 +19,7 @@ const KIND_LABEL: Record<PlanetDef['kind'], string> = {
   blackhole: '黑洞边缘',
   'ring-city': '环形城市',
   magnetar: '磁星域',
+  saltflat: '盐晶潮滩',
 };
 
 const HAZARD_LABEL: Record<HazardKind, string> = {
@@ -30,6 +31,7 @@ const HAZARD_LABEL: Record<HazardKind, string> = {
   tidal: '潮汐力场',
   traffic: '环城航道',
   magnetic: '强磁暴',
+  brine: '高盐卤雾',
 };
 
 export interface HudHandlers {

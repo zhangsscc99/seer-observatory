@@ -30,7 +30,8 @@ export interface PlanetDef {
     | 'binary'
     | 'blackhole'
     | 'ring-city'
-    | 'magnetar';
+    | 'magnetar'
+    | 'saltflat';
   seed: number;
 }
 
@@ -59,6 +60,8 @@ export const PLANETS: readonly PlanetDef[] = [
   // 磁暴星域 · 岚弧: deep magnetized indigo-slate iron crust + vivid emerald-teal fissures & mint-cyan dipole plasma arcs
   // (emerald-teal primary palette is visually distinct from all 6 prior worlds: ice-blue, orange-red, ochre, blue/orange, violet/gold, steel/amber)
   { id: 'magnetar', name: '磁暴星域 · 岚弧', pos: { x: -720, y: -120, z: -1020 }, radius: 100, hazard: 'magnetic', colors: [0x13263d, 0x18e8b8, 0xb8fff0], atmosphere: 0x28f2cc, kind: 'magnetar', seed: 149 },
+  // 汐原 · 盐晶潮滩: warm-ivory polygonal evaporite salt crust + shallow mirror-like turquoise brine flats & cool-cyan brine mist
+  { id: 'saltflat', name: '汐原 · 盐晶潮滩', pos: { x: -1250, y: -60, z: 420 }, radius: 105, hazard: 'brine', colors: [0x125a6c, 0xd8cdb8, 0xf7f2e6], atmosphere: 0xb2eff4, kind: 'saltflat', seed: 217 },
 ];
 
 /** twin distant stars of the binary system (cool-white primary + warm-orange companion) */

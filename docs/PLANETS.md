@@ -20,6 +20,7 @@
 | `blackhole` | 黑洞边缘 | 引力透镜光晕、吸积盘、时间膨胀提示 | 危险区：进入后 HUD 时钟加速、超出半径自动弹出 | ✅ M10 上线（F1001–F1005） |
 | `ring-city` | 环形城市 | 人造环、窗光密集、可停靠 | 停靠补给、情报商（解锁下一星球） | ✅ M11 上线（F1109–F1113） |
 | `magnetar` | 磁暴星域 · 岚弧 | 深靛铁壳 + 翡翠青绿磁震裂纹、16 条 r=L·R·sin²θ 偶极磁力线弧笼、极区足点等离子环、1.15R 磁层 halo 与 360 偶极壳尘粒 | 强磁暴场（`magnetic`，能量回充 ×0.75，青色警示）+ 扫描得「超导磁晶」 | ✅ M13 上线（F1301–F1305） |
+| `saltflat` | 盐晶潮滩 | 暖象牙六边形盐壳多边形 + 极浅卤水镜面（Saltline 同款滚动法线 + 菲涅尔 + 镜面反光带 + 岸线结晶带）、干涸潮沟、淡青卤雾 | 高盐卤雾（`brine`，能量回充 ×0.85）+ 扫描得「盐晶卤水样本」 | ✅ M14 上线（F1401–F1405） |
 
 ## 已有星球（M2 铺设，M5 起可扫描）
 
@@ -33,6 +34,7 @@
 | `gas-storm` | 气态巨行星 | 气态巨行星 | (620, 60, 780) r145 | `gravity` 强引力 | 风暴氦芯 | 条带差速流动 + 风暴眼涡旋 + 1.16R 暖橙 halo + 悬浮采集站 |
 | `red-giant` | 红巨星系 | 红巨星 | (-480, 160, 1020) r280 | `radiation` 强辐射 | 红巨星等离子 | Voronoi 米粒光球 + 临边昏暗 + 日珥弧 + 2.6R 尘埃幕 + 局部点光 |
 | `binary` | 双子星域 | 双星系 | (1100, -30, -520) r135 | `photon` 光子场 | 双星等离子 | 冷白/暖橙双恒星 + 距离衰减双色温方向光 + 冷暖双半球与晨昏环带 + 双色全息球 |
+| `saltflat` | 汐原 · 盐晶潮滩 | 盐晶潮滩 | (-1250, -60, 420) r105 | `brine` 高盐卤雾 | 盐晶卤水样本 | 六边形盐壳 + 浅卤水镜面（多层滚动法线 + 菲涅尔 + pow220 反光带）+ 双层 halo + 1.02R 卤雾壳 + 160 尘粒 |
 
 ## 横切能力（M5 ✅ commit 4c0eb5b）
 
@@ -93,5 +95,13 @@
 下一颗候选：待定（七颗特色星球全部上线，之后按画质走查清单 T3–T15 逐条推进）。
 
 5. ✅ 调度器验收（2026-11-22，两轮复跑）：`node scripts/measure-look.mjs` → `LOOK OK`（844×390：cabin `122.24 / darkFrac 0.02 / p95 230.69`、space `94.00 / 181.59`、**mag `84.6 / 205.0`**；390×844 info：cabin `131.56`、space `90.88`、mag `82.3 / 208.2`）；两次连跑四项主指标差 ≤0.6。`bash scripts/ci-deploy.sh` → `DEPLOY OK`（`index-Dt0v0C_I.js`）；公网 `https://openfolio.uk/seer/` 200 且 asset 哈希与本机一致。视审遗留：T14（特写 HUD 目标文案仍是旧目标）、T15（竖屏磁弧交叠/贴边）、T13（舱内材质仍偏 Demo）。
+
+## saltflat 交付清单（M14）
+
+1. ✅ 星球数据、危害与扫描链路（F1401）：`PLANETS` 新增 `saltflat`（`汐原 · 盐晶潮滩`，`(-1250, -60, 420)`，r105，`hazard: 'brine'`，seed 217，与其余 9 星间距 > 半径和 + 100 且在 `SECTOR_RADIUS` 内）；`HazardKind` 新增 `'brine'`（`energyMul: 0.85`，`高盐卤雾·回充 ×0.85`）；`scanResult('saltflat')` 返回「盐晶卤水样本」与 ≥40 字专属观测日志；`KIND_LABEL['saltflat'] = '盐晶潮滩'`、`HAZARD_LABEL['brine'] = '高盐卤雾'`；星图台全息球配色 `0x9cf0f4 / 0xf2e4c4`。
+2. ✅ 盐壳 PBR + Saltline 同款卤水镜面（F1402）：`src/render/textures.ts` `saltflatTextures()` 1024×512 程序化（六边形盐壳 Voronoi 裂纹、干涸潮沟暗带、水体 SDF `waterData` 与两张 256×256 周期 fBM Sobel 法线 `waterNrmA/B`）；`src/render/space.ts` `buildSaltflat()` `onBeforeCompile` 实现：**3 层滚动法线**（repeat 13/27/44，速度 `(0.018,-0.009)/(-0.024,0.015)/(0.013,0.027)` rad/s）+ 阵风平静镜面/波纹分区 + 长涌 swell；**Schlick 菲涅尔** `0.05 + 0.95·pow(1-NdV,5)`；**scene.environment 镜面反射放大**（水区 radiance ×(2.15+2.6·fresnel)）+ 云影天空镜面 `sfSkyCloudMirror`；**太阳反光带**（core `pow 220 ×4.8` + 各向异性 ribbon `pow 64 ×1.35` + sheen `pow 18`）；**岸线结晶带**（SDF + 噪声阈值 `sfShoreFoam`，粗糙度抬到 0.52）；水下底面折射 + 浅→深卤水体色；夜侧反照保底 ≥0.085。专属暖金定向主光（仅 `near` 组）+ 冷青卤水反弹点光；1.05R 窄亮边 + 1.16R 宽雾双层 halo、1.02R 卤雾壳（opacity ≤0.10）、160 颗逆光盐晶尘粒。
+3. ✅ 特写机位与 T14 修复（F1403）：`focusPlanet('saltflat')` 4.0R 侧斜 3/4（`dir (0.88,0.18,0.44)`，~73° 太阳夹角），反光带 + 盐壳裂纹 + 晨昏冷青边缘光晕同框；`scripts/measure-look.mjs` 加 `['saltflat','salt']` 出图项并**新增 T14 断言**——每个特写里 `#goal` 与 `#scanName` 文案必须含当前星球名、扫描条不可隐藏（`focusPlanet` 时 HUD 目标接管当前星球）。
+4. ✅ 单测与门禁（F1404/F1405，2026-11-22）：`npx tsc --noEmit` 0 错误；`node --test src/game/` **59 pass / 0 fail**（saltflat 注册/间距/危害/扫描日志 4 组断言）；`npm run build` 成功（`dist/assets/index-U2mN1CNm.js` 856.89 kB / gzip 235.68 kB）；`node scripts/measure-look.mjs` → **LOOK OK / 0 FAIL**（844×390：cabin `122.24 / darkFrac 0.02 / p95 230.69`、space `93.79 / 180.65`、**salt `74.9 / 168.1`**；390×844 info：cabin `131.56`、space `90.81`、**salt `74.0 / 181.3`**）；出图 `e2e/shots/salt-844x390.png` / `salt-390x844.png`。
+5. ⏳ 待补：本轮执行器额度中断（agy 被 45 min 超时截断），水面/盐壳的逐张人工视审（材质分层、反光带方向、与 Saltline 档次对比）下轮由执行器补做；机器门禁全绿。
 
 进度标记：⏳ 进行中 · ✅ 已上线（带提交 hash）· 未开始

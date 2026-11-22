@@ -98,6 +98,8 @@ test('hazardEffect: cold cuts energy regen; no hazard → neutral', () => {
   assert.equal(hazardEffect('traffic').warn, '环城航道·回充 ×1.15');
   assert.equal(hazardEffect('magnetic').energyMul, 0.75);
   assert.equal(hazardEffect('magnetic').warn, '强磁暴场·回充 ×0.75');
+  assert.equal(hazardEffect('brine').energyMul, 0.85);
+  assert.equal(hazardEffect('brine').warn, '高盐卤雾·回充 ×0.85');
   const none = hazardEffect(undefined);
   assert.equal(none.energyMul, 1);
   assert.equal(none.warn, null);
@@ -116,6 +118,7 @@ test('sector data: every TARGET resolves, hazards assigned per design', () => {
   assert.equal(planetById('blackhole')!.hazard, 'tidal');
   assert.equal(planetById('ring-city')!.hazard, 'traffic');
   assert.equal(planetById('magnetar')!.hazard, 'magnetic');
+  assert.equal(planetById('saltflat')!.hazard, 'brine');
   assert.equal(scanResult('icer').resource, '氦-3 冰芯');
   assert.equal(scanResult('gas-storm').resource, '风暴氦芯');
   assert.equal(scanResult('red-giant').resource, '红巨星等离子');
@@ -131,5 +134,8 @@ test('sector data: every TARGET resolves, hazards assigned per design', () => {
   const magRes = scanResult('magnetar');
   assert.equal(magRes.resource, '超导磁晶');
   assert.ok([...magRes.log].length >= 40 && /磁力线弧/.test(magRes.log) && /强磁暴/.test(magRes.log) && /超导磁晶/.test(magRes.log));
+  const sfRes = scanResult('saltflat');
+  assert.equal(sfRes.resource, '盐晶卤水样本');
+  assert.ok([...sfRes.log].length >= 40 && /盐壳多边形/.test(sfRes.log) && /卤水镜面/.test(sfRes.log) && /卤雾/.test(sfRes.log));
   assert.ok(PLANETS.length === TARGETS.length);
 });

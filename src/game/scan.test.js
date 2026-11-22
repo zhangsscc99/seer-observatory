@@ -30,6 +30,7 @@ var RESOURCE_BY_KIND = {
   blackhole: "\u5F15\u529B\u6CE2\u6676",
   "ring-city": "\u73AF\u57CE\u901A\u884C\u5BC6\u94A5",
   magnetar: "\u8D85\u5BFC\u78C1\u6676",
+  saltflat: "\u76D0\u6676\u5364\u6C34\u6837\u672C",
   ocean: "\u91CD\u6C34\u6837\u672C",
   gas: "\u6C26\u6C14\u7F50",
   ice: "\u51B0\u6676",
@@ -46,7 +47,8 @@ var RESOURCE_BY_ID = {
   binary: "\u53CC\u661F\u7B49\u79BB\u5B50",
   blackhole: "\u5F15\u529B\u6CE2\u6676",
   "ring-city": "\u73AF\u57CE\u901A\u884C\u5BC6\u94A5",
-  magnetar: "\u8D85\u5BFC\u78C1\u6676"
+  magnetar: "\u8D85\u5BFC\u78C1\u6676",
+  saltflat: "\u76D0\u6676\u5364\u6C34\u6837\u672C"
 };
 var LOG_BY_ID = {
   kelos: "\u5168\u7403\u6D77\u6D0B\u8986\u76D6\uFF0C\u6DF1\u5C42\u6D0B\u6D41\u4E2D\u5BCC\u542B\u91CD\u6C34\uFF0C\u91C7\u6837\u6570\u636E\u7A33\u5B9A\u3002",
@@ -59,7 +61,8 @@ var LOG_BY_ID = {
   binary: "\u53CC\u661F\u51B7\u767D\u4E0E\u6696\u6A59\u53CC\u8272\u6E29\u8F90\u5C04\u5728\u6B64\u4EA4\u6C47\uFF0C\u6668\u660F\u73AF\u5E26\u9AD8\u80FD\u5377\u4E91\u7FFB\u6D8C\uFF0C\u5F3A\u5149\u5B50\u573A\u6301\u7EED\u4E3A\u98DE\u8239\u63A8\u8FDB\u5668\u63D0\u4F9B\u7A33\u5B9A\u56DE\u5145\u589E\u76CA\u3002",
   blackhole: "\u5F25\u591C\u4E8B\u4EF6\u89C6\u754C\u5916\u4FA7\u767D\u70ED\u5149\u5B50\u73AF\u6E05\u6670\u53EF\u8FA8\uFF0C\u9AD8\u901F\u65CB\u8F6C\u7684\u5438\u79EF\u76D8\u56E0\u591A\u666E\u52D2\u6548\u5E94\u5448\u73B0\u84DD\u767D\u4E0E\u6697\u7EA2\u4E0D\u5BF9\u79F0\u5149\u5E26\uFF0C\u5F3A\u6F6E\u6C50\u529B\u573A\u5DF2\u5F15\u53D1\u663E\u8457\u65F6\u95F4\u81A8\u80C0\u6548\u5E94\u3002",
   "ring-city": "\u62FE\u5149\u73AF\u57CE\u7531\u7CBE\u5BC6\u53CC\u5C42\u91D1\u5C5E\u505C\u9760\u73AF\u6784\u7B51\u800C\u6210\uFF0C\u73AF\u5468\u7A97\u5149\u6392\u5E03\u4E25\u8C28\u6709\u5E8F\u4E14\u660E\u6697\u9519\u843D\uFF0C\u56DB\u5EA7\u5BF9\u7F6E\u505C\u9760\u5854\u6807\u793A\u51FA\u9AD8\u80FD\u8865\u7ED9\u7AD9\u4F4D\uFF0C\u73AF\u57CE\u822A\u9053\u4FE1\u6807\u6301\u7EED\u4E3A\u8FC7\u5F80\u98DE\u8239\u63D0\u4F9B\u7A33\u5B9A\u56DE\u5145\u589E\u76CA\u3002",
-  magnetar: "\u5C9A\u5F27\u78C1\u661F\u9AD8\u5BC6\u91D1\u5C5E\u5730\u58F3\u5E03\u6EE1\u9752\u7FE0\u78C1\u9707\u88C2\u7EB9\uFF0C\u53CC\u6781\u5076\u6781\u78C1\u529B\u7EBF\u5F27\u643A\u9AD8\u80FD\u7B49\u79BB\u5B50\u8109\u51B2\u6A2A\u8DE8\u661F\u57DF\uFF0C\u5F3A\u78C1\u66B4\u573A\u6301\u7EED\u5F15\u53D1\u611F\u5E94\u5E72\u6270\uFF0C\u6781\u51A0\u8282\u70B9\u6790\u51FA\u9AD8\u7EAF\u8D85\u5BFC\u78C1\u6676\u3002"
+  magnetar: "\u5C9A\u5F27\u78C1\u661F\u9AD8\u5BC6\u91D1\u5C5E\u5730\u58F3\u5E03\u6EE1\u9752\u7FE0\u78C1\u9707\u88C2\u7EB9\uFF0C\u53CC\u6781\u5076\u6781\u78C1\u529B\u7EBF\u5F27\u643A\u9AD8\u80FD\u7B49\u79BB\u5B50\u8109\u51B2\u6A2A\u8DE8\u661F\u57DF\uFF0C\u5F3A\u78C1\u66B4\u573A\u6301\u7EED\u5F15\u53D1\u611F\u5E94\u5E72\u6270\uFF0C\u6781\u51A0\u8282\u70B9\u6790\u51FA\u9AD8\u7EAF\u8D85\u5BFC\u78C1\u6676\u3002",
+  saltflat: "\u6C50\u539F\u5E7F\u88A4\u7684\u516D\u8FB9\u5F62\u76D0\u58F3\u591A\u8FB9\u5F62\u95F4\u94FA\u5C55\u7740\u6781\u6D45\u7684\u9AD8\u76D0\u5364\u6C34\u955C\u9762\uFF0C\u6674\u7A7A\u4E91\u5F71\u4E0E\u661F\u5149\u5728\u6CE2\u7EB9\u4E0A\u62C9\u51FA\u9510\u5229\u53CD\u5149\u5E26\uFF0C\u5E72\u6DB8\u6F6E\u6C9F\u8FB9\u7F18\u6790\u51FA\u96EA\u767D\u76D0\u810A\uFF0C\u4F4E\u7A7A\u5364\u96FE\u6298\u5C04\u6DE1\u9752\u5FAE\u5149\u5E76\u8F7B\u5FAE\u62D6\u6162\u56DE\u5145\u3002"
 };
 var GENERIC_LOGS = [
   "\u5149\u8C31\u626B\u63CF\u5B8C\u6210\uFF0C\u8868\u5C42\u6210\u5206\u4E0E\u8F90\u5C04\u6C34\u5E73\u5DF2\u8BB0\u5165\u6863\u6848\u3002",
@@ -84,7 +87,9 @@ var HAZARDS = {
   tidal: { energyMul: 0.7, warn: "\u6F6E\u6C50\u529B\u573A\xB7\u56DE\u5145 \xD70.7" },
   traffic: { energyMul: 1.15, warn: "\u73AF\u57CE\u822A\u9053\xB7\u56DE\u5145 \xD71.15" },
   // Alternating magnetospheric flux induces eddy-current drag on thruster capacitors (25% slower recharge, cyan warning)
-  magnetic: { energyMul: 0.75, warn: "\u5F3A\u78C1\u66B4\u573A\xB7\u56DE\u5145 \xD70.75" }
+  magnetic: { energyMul: 0.75, warn: "\u5F3A\u78C1\u66B4\u573A\xB7\u56DE\u5145 \xD70.75" },
+  // Conductive saline aerosol film slightly damps intake capacitor recharge (15% slower, cyan warning)
+  brine: { energyMul: 0.85, warn: "\u9AD8\u76D0\u5364\u96FE\xB7\u56DE\u5145 \xD70.85" }
 };
 function hazardEffect(h) {
   if (!h) return { energyMul: 1, warn: null };
@@ -136,7 +141,9 @@ var PLANETS = [
   { id: "ring-city", name: "\u73AF\u5F62\u57CE\u5E02 \xB7 \u62FE\u5149", pos: { x: 260, y: -150, z: -1330 }, radius: 130, hazard: "traffic", colors: [1317412, 16757860, 15398143], atmosphere: 10475775, kind: "ring-city", seed: 131 },
   // 磁暴星域 · 岚弧: deep magnetized indigo-slate iron crust + vivid emerald-teal fissures & mint-cyan dipole plasma arcs
   // (emerald-teal primary palette is visually distinct from all 6 prior worlds: ice-blue, orange-red, ochre, blue/orange, violet/gold, steel/amber)
-  { id: "magnetar", name: "\u78C1\u66B4\u661F\u57DF \xB7 \u5C9A\u5F27", pos: { x: -720, y: -120, z: -1020 }, radius: 100, hazard: "magnetic", colors: [1254973, 1632440, 12124144], atmosphere: 2683596, kind: "magnetar", seed: 149 }
+  { id: "magnetar", name: "\u78C1\u66B4\u661F\u57DF \xB7 \u5C9A\u5F27", pos: { x: -720, y: -120, z: -1020 }, radius: 100, hazard: "magnetic", colors: [1254973, 1632440, 12124144], atmosphere: 2683596, kind: "magnetar", seed: 149 },
+  // 汐原 · 盐晶潮滩: warm-ivory polygonal evaporite salt crust + shallow mirror-like turquoise brine flats & cool-cyan brine mist
+  { id: "saltflat", name: "\u6C50\u539F \xB7 \u76D0\u6676\u6F6E\u6EE9", pos: { x: -1250, y: -60, z: 420 }, radius: 105, hazard: "brine", colors: [1202796, 14208440, 16249574], atmosphere: 11726836, kind: "saltflat", seed: 217 }
 ];
 function planetById(id) {
   return PLANETS.find((p) => p.id === id);
@@ -233,6 +240,8 @@ test("hazardEffect: cold cuts energy regen; no hazard \u2192 neutral", () => {
   assert.equal(hazardEffect("traffic").warn, "\u73AF\u57CE\u822A\u9053\xB7\u56DE\u5145 \xD71.15");
   assert.equal(hazardEffect("magnetic").energyMul, 0.75);
   assert.equal(hazardEffect("magnetic").warn, "\u5F3A\u78C1\u66B4\u573A\xB7\u56DE\u5145 \xD70.75");
+  assert.equal(hazardEffect("brine").energyMul, 0.85);
+  assert.equal(hazardEffect("brine").warn, "\u9AD8\u76D0\u5364\u96FE\xB7\u56DE\u5145 \xD70.85");
   const none = hazardEffect(void 0);
   assert.equal(none.energyMul, 1);
   assert.equal(none.warn, null);
@@ -250,6 +259,7 @@ test("sector data: every TARGET resolves, hazards assigned per design", () => {
   assert.equal(planetById("blackhole").hazard, "tidal");
   assert.equal(planetById("ring-city").hazard, "traffic");
   assert.equal(planetById("magnetar").hazard, "magnetic");
+  assert.equal(planetById("saltflat").hazard, "brine");
   assert.equal(scanResult("icer").resource, "\u6C26-3 \u51B0\u82AF");
   assert.equal(scanResult("gas-storm").resource, "\u98CE\u66B4\u6C26\u82AF");
   assert.equal(scanResult("red-giant").resource, "\u7EA2\u5DE8\u661F\u7B49\u79BB\u5B50");
@@ -265,5 +275,8 @@ test("sector data: every TARGET resolves, hazards assigned per design", () => {
   const magRes = scanResult("magnetar");
   assert.equal(magRes.resource, "\u8D85\u5BFC\u78C1\u6676");
   assert.ok([...magRes.log].length >= 40 && /磁力线弧/.test(magRes.log) && /强磁暴/.test(magRes.log) && /超导磁晶/.test(magRes.log));
+  const sfRes = scanResult("saltflat");
+  assert.equal(sfRes.resource, "\u76D0\u6676\u5364\u6C34\u6837\u672C");
+  assert.ok([...sfRes.log].length >= 40 && /盐壳多边形/.test(sfRes.log) && /卤水镜面/.test(sfRes.log) && /卤雾/.test(sfRes.log));
   assert.ok(PLANETS.length === TARGETS.length);
 });

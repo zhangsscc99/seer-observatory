@@ -179,3 +179,13 @@ npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measu
 | 13.3 | 特写机位与 look-gate 出图项：`focusPlanet('magnetar')` 4.2R 侧斜 3/4 构图（磁赤道上方 18°、偏转 46°、微压机头 0.08 rad，横/竖屏 FOV `66°/104°`，弧笼全景与铁壳同框且盘面不被飞船遮挡）；`measure-look.mjs` 加入 `['magnetar', 'mag']` 与 `shots:` 提示行（阈值不变） | `grep -n "magnetar" src/main.ts scripts/measure-look.mjs && node --check scripts/measure-look.mjs` |
 | 13.4 | 类型检查、单测与生产构建：`npx tsc --noEmit` 0 错误、`node --test src/game/` 58 pass、`npm run build` 成功（`index-*.js` gzip 227.54 kB） | `npx tsc --noEmit && node --test src/game/ && npm run build` |
 | 13.5 | M13 交付文档同步：`docs/PLANETS.md` 候选池与 M13 交付清单、`docs/ART-SPEC.md` 磁暴星域材质/光照/磁力线规范、`FEATURES.md` M13 清单 | `grep -n "magnetar" docs/PLANETS.md docs/ART-SPEC.md FEATURES.md` |
+
+## M14 盐晶潮滩 saltflat（F1401–F1405）
+
+| # | 功能 | verify |
+| --- | --- | --- |
+| 14.1 | `PLANETS` 新增 `saltflat`（`汐原 · 盐晶潮滩`，`(-1250,-60,420)` r105，`kind:'saltflat'`、`hazard:'brine'` seed 217，间距 > 半径和 + 100 且在 SECTOR_RADIUS 内）；`HAZARDS.brine = {energyMul:0.85, warn:'高盐卤雾·回充 ×0.85'}`；`scanResult('saltflat')` 返回「盐晶卤水样本」+ ≥40 字专属日志；HUD `KIND_LABEL`/`HAZARD_LABEL` 映射 | `node --test --test-name-pattern="saltflat\\|brine" src/game/` |
+| 14.2 | Saltline 同款卤水镜面：3 层滚动法线（repeat 13/27/44 异速）+ Schlick 菲涅尔 pow5 + `scene.environment` IBL 放大 + 天空云影镜面 + `pow220` 太阳反光带 + SDF 岸线结晶带 + 水下折射与浅深水体色；盐壳 1024×512 程序化（Voronoi 裂纹 + 潮沟） | `grep -n "buildSaltflat\\|sfSunCore\\|sfShoreFoam\\|uWaterNrm1" src/render/space.ts src/render/textures.ts` |
+| 14.3 | 大气与光照：暖金定向主光（`near` 组）+ 卤水反弹点光、1.05R/1.16R 双层 halo、1.02R 卤雾壳 ≤0.10、160 颗盐晶尘粒、夜侧反照保底 ≥0.085 | `grep -n "saltflat" src/render/space.ts \\| grep -c halo` |
+| 14.4 | 特写机位 `focusPlanet('saltflat')` 4.0R 侧斜 3/4；`measure-look` 加 `salt` 出图项 + T14 断言（特写 HUD 目标行/扫描条文案含当前星球名） | `node scripts/measure-look.mjs` → LOOK OK；`ls e2e/shots/salt-*.png` |
+| 14.5 | 门禁全绿：tsc 0 错误、`node --test src/game/` 59 pass、`npm run build` 成功；844×390 cabin `122.24/0.02/230.69`、space `93.79/180.65`、salt `74.9/168.1` | `npx tsc --noEmit && node --test src/game/ && npm run build && node scripts/measure-look.mjs` |

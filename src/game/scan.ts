@@ -3,7 +3,7 @@
 // (id / progress / done) so progress survives leaving range and only resets
 // when a different target comes into view.
 
-export type HazardKind = 'cold' | 'radiation' | 'wind' | 'gravity' | 'photon' | 'tidal' | 'traffic' | 'magnetic';
+export type HazardKind = 'cold' | 'radiation' | 'wind' | 'gravity' | 'photon' | 'tidal' | 'traffic' | 'magnetic' | 'brine';
 
 export interface ScanTarget {
   id: string;
@@ -50,6 +50,7 @@ export const RESOURCE_BY_KIND: Record<string, string> = {
   blackhole: '引力波晶',
   'ring-city': '环城通行密钥',
   magnetar: '超导磁晶',
+  saltflat: '盐晶卤水样本',
   ocean: '重水样本',
   gas: '氦气罐',
   ice: '冰晶',
@@ -69,6 +70,7 @@ const RESOURCE_BY_ID: Record<string, string> = {
   blackhole: '引力波晶',
   'ring-city': '环城通行密钥',
   magnetar: '超导磁晶',
+  saltflat: '盐晶卤水样本',
 };
 
 const LOG_BY_ID: Record<string, string> = {
@@ -83,6 +85,7 @@ const LOG_BY_ID: Record<string, string> = {
   blackhole: '弥夜事件视界外侧白热光子环清晰可辨，高速旋转的吸积盘因多普勒效应呈现蓝白与暗红不对称光带，强潮汐力场已引发显著时间膨胀效应。',
   'ring-city': '拾光环城由精密双层金属停靠环构筑而成，环周窗光排布严谨有序且明暗错落，四座对置停靠塔标示出高能补给站位，环城航道信标持续为过往飞船提供稳定回充增益。',
   magnetar: '岚弧磁星高密金属地壳布满青翠磁震裂纹，双极偶极磁力线弧携高能等离子脉冲横跨星域，强磁暴场持续引发感应干扰，极冠节点析出高纯超导磁晶。',
+  saltflat: '汐原广袤的六边形盐壳多边形间铺展着极浅的高盐卤水镜面，晴空云影与星光在波纹上拉出锐利反光带，干涸潮沟边缘析出雪白盐脊，低空卤雾折射淡青微光并轻微拖慢回充。',
 };
 
 const GENERIC_LOGS: readonly string[] = [
@@ -126,6 +129,8 @@ const HAZARDS: Record<HazardKind, HazardEffect & { warn: string }> = {
   traffic: { energyMul: 1.15, warn: '环城航道·回充 ×1.15' },
   // Alternating magnetospheric flux induces eddy-current drag on thruster capacitors (25% slower recharge, cyan warning)
   magnetic: { energyMul: 0.75, warn: '强磁暴场·回充 ×0.75' },
+  // Conductive saline aerosol film slightly damps intake capacitor recharge (15% slower, cyan warning)
+  brine: { energyMul: 0.85, warn: '高盐卤雾·回充 ×0.85' },
 };
 
 export function hazardEffect(h: HazardKind | undefined): HazardEffect {

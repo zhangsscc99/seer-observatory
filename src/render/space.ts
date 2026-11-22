@@ -19,6 +19,7 @@ import {
   ringCityCoreTexture,
   ringCityHullTexture,
   rockTexture,
+  saltflatTextures,
 } from './textures.ts';
 
 const sunDir = new THREE.Vector3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z);
@@ -378,6 +379,12 @@ export const RING_CITY_QUAT = new THREE.Quaternion().setFromEuler(new THREE.Eule
 
 /** tilted magnetar magnetic dipole orientation in world space (~23° oblique rotator tilt) */
 export const MAGNETAR_QUAT = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.16, 0.22, -0.36));
+
+/** gentle axial obliquity for saltflat (`汐原 · 盐晶潮滩`, ~9° tilt) */
+export const SALTFLAT_QUAT = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.08, 0.0, -0.14));
+
+/** warm-gold key light direction for saltflat (low-elevation raking light for dramatic 3/4 terminator & mid-equatorial mirror band) */
+export const SALT_SUN_DIR = new THREE.Vector3(0.64, 0.26, -0.72).normalize();
 
 // thin artificial shield shell (1.00R–1.04R, FrontSide, pale blue, alpha <= 0.18, no natural haze)
 const RING_SHIELD_FRAG = /* glsl */ `
@@ -2138,6 +2145,439 @@ function buildMagnetar(p: PlanetDef): THREE.Group {
   return g;
 }
 
+/** Saltflat (`saltflat`, 「汐原 · 盐晶潮滩」):
+ *  - PBR polygonal evaporite salt-crust & Saltline-style shallow brine mirror (`MeshStandardMaterial`
+ *    + `onBeforeCompile`, zero post-processing):
+ *    1) 3-layer scrolling tangent-space water normal maps (from 2 procedural canvas normal textures
+ *       `waterNrmA` / `waterNrmB` at repeats 14×/29×/46× with distinct scroll velocities + wind slicks)
+ *    2) Schlick Fresnel `pow(1.0 - dot(N, V), 5.0)` ramping sky/nebula reflection & shallow→deep color
+ *    3) Real `scene.environment` cubemap reflection + reflected planetary sky/cirrus cloud mirror
+ *    4) Narrow sun mirror highlight band (`pow(dot(reflect(-L, N), V), 220.0)` + ripple glitter ribbon)
+ *    5) Signed-depth-field + noise-threshold crystalline white salt shoreline transition band
+ *  - Dual atmospheric halo (`1.05R` narrow bright rim + `1.16R` wide mist, warm-white/pale-cyan shifting
+ *    cooler along the terminator)
+ *  - `1.02R` ultra-thin brine mist shell (opacity <= 0.10) + 160 instanced backlit salt-crystal dust motes */
+function buildSaltflat(p: PlanetDef): THREE.Group {
+  const g = new THREE.Group();
+  g.position.set(p.pos.x, p.pos.y, p.pos.z);
+
+  const R = p.radius;
+  const rnd = mulberry32(p.seed + 59);
+  const atmoCol = new THREE.Color(p.atmosphere);
+  const texSet = saltflatTextures(p);
+
+  const saltUniforms = {
+    uTime: { value: 0 },
+    uSaltSun: { value: SALT_SUN_DIR },
+    uAtmo: { value: atmoCol },
+    uWaterData: { value: texSet.waterData },
+    uWaterNrm1: { value: texSet.waterNrmA },
+    uWaterNrm2: { value: texSet.waterNrmB },
+  };
+
+  const tilt = new THREE.Group();
+  tilt.quaternion.copy(SALTFLAT_QUAT);
+  g.add(tilt);
+
+  const surface = new THREE.Group();
+  surface.name = 'surface';
+  tilt.add(surface);
+
+  // 1) Unified Saltline-style shallow water mirror + polygonal evaporite salt-crust PBR material
+  const surfaceMat = new THREE.MeshStandardMaterial({
+    map: texSet.map,
+    normalMap: texSet.normal,
+    normalScale: new THREE.Vector2(0.85, 0.85),
+    roughnessMap: texSet.rough,
+    roughness: 1.0,
+    metalness: 0.05,
+    envMapIntensity: 1.85,
+  });
+  surfaceMat.userData.uniforms = saltUniforms;
+  surfaceMat.customProgramCacheKey = () => 'saltflat-brine-mirror-v1';
+  surfaceMat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, saltUniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vSfW;\nvarying vec3 vSfGeoN;\nvarying vec2 vSfUv;')
+      .replace(
+        '#include <project_vertex>',
+        `vSfUv = uv;
+        vSfGeoN = normalize(mat3(modelMatrix) * normal);
+        vSfW = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        #include <project_vertex>`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+        uniform float uTime;
+        uniform vec3 uSaltSun;
+        uniform vec3 uAtmo;
+        uniform sampler2D uWaterData;
+        uniform sampler2D uWaterNrm1;
+        uniform sampler2D uWaterNrm2;
+        varying vec3 vSfW;
+        varying vec3 vSfGeoN;
+        varying vec2 vSfUv;
+        float sfWaterMask;
+        float sfDeep;
+        float sfShoreFoam;
+        float sfGust;
+        float sfSpark;
+        float sfRidgeMask;
+        vec2 sfWaterSlope;
+        float sfHash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+        float sfNoise3(vec3 p) {
+          vec3 i = floor(p); vec3 f = fract(p);
+          vec3 u = f * f * (3.0 - 2.0 * f);
+          return mix(
+            mix(mix(sfHash3(i), sfHash3(i + vec3(1.0, 0.0, 0.0)), u.x),
+                mix(sfHash3(i + vec3(0.0, 1.0, 0.0)), sfHash3(i + vec3(1.0, 1.0, 0.0)), u.x), u.y),
+            mix(mix(sfHash3(i + vec3(0.0, 0.0, 1.0)), sfHash3(i + vec3(1.0, 0.0, 1.0)), u.x),
+                mix(sfHash3(i + vec3(0.0, 1.0, 1.0)), sfHash3(i + vec3(1.0, 1.0, 1.0)), u.x), u.y),
+            u.z);
+        }
+        float sfFbm3(vec3 p) {
+          float s = 0.0; float a = 0.5;
+          for (int i = 0; i < 4; i++) { s += a * sfNoise3(p); p = p * 2.07 + 7.3; a *= 0.5; }
+          return s;
+        }
+        // Reflected planetary sky-dome + high-contrast wispy cloud mirror along reflected ray R (Salar de Uyuni mirror-sky look)
+        vec3 sfSkyCloudMirror(vec3 reflDir, vec3 geoN, vec3 sunD, float t) {
+          float elev = clamp(dot(reflDir, geoN), 0.0, 1.0);
+          float toSun = max(dot(reflDir, sunD), 0.0);
+          // Deep glossy sapphire-indigo zenith -> luminous cerulean-aqua horizon reflection for razor mirror contrast
+          vec3 zenithCol = vec3(0.022, 0.095, 0.22);
+          vec3 horizonCol = mix(vec3(0.14, 0.42, 0.58), vec3(0.88, 0.84, 0.72), pow(toSun, 2.2) * 0.58);
+          vec3 skyCol = mix(horizonCol, zenithCol, pow(elev, 0.52));
+          // Domain-warped high-contrast sunlit cirrus cloud ribbons reflected clearly in the dark mirror water
+          vec3 cp = reflDir * 4.2 + vec3(t * 0.009, -t * 0.004, t * 0.007);
+          vec3 warp = vec3(sfFbm3(cp * 0.9 + 1.7), sfFbm3(cp * 0.9 + 5.1), sfFbm3(cp * 0.9 + 9.4));
+          float c1 = sfFbm3(cp * 1.55 + warp * 1.45);
+          float c2 = sfFbm3(cp * 3.4 - warp * 0.95 + 3.2);
+          float cloudBand = smoothstep(0.50, 0.68, c1 * 0.70 + c2 * 0.30);
+          float cloudWisp = smoothstep(0.56, 0.74, c2) * smoothstep(0.42, 0.66, c1);
+          vec3 cloudLit = mix(vec3(0.76, 0.92, 0.98), vec3(1.0, 0.97, 0.90), 0.50 + 0.50 * pow(toSun, 1.1));
+          skyCol = mix(skyCol, cloudLit * 1.32, clamp(cloudBand * 0.84 + cloudWisp * 0.45, 0.0, 0.96));
+          // Warm solar aureole in reflected sky
+          skyCol += vec3(1.0, 0.93, 0.76) * pow(toSun, 9.0) * 0.52;
+          return skyCol;
+        }`,
+      )
+      .replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+        {
+          vec4 sfData = texture2D(uWaterData, vSfUv);
+          vec2 wUv = vSfUv * vec2(2.0, 1.0);
+          // 3-layer Saltline-style scrolling water ripples from 2 procedural canvas normal maps
+          vec3 sN1 = texture2D(uWaterNrm1, wUv * 13.0 + uTime * vec2( 0.018, -0.009)).xyz * 2.0 - 1.0;
+          vec3 sN2 = texture2D(uWaterNrm2, wUv * 27.0 + uTime * vec2(-0.024,  0.015)).xyz * 2.0 - 1.0;
+          vec3 sN3 = texture2D(uWaterNrm1, wUv.yx * 44.0 + uTime * vec2( 0.013,  0.027)).xyz * 2.0 - 1.0;
+          // Broad wind-gust patches (calmer mirror slicks vs softly ruffled patches) & long swell (Saltline DR)
+          float gustSample = texture2D(uWaterNrm2, wUv * 3.6 + uTime * vec2(0.0025, 0.0018)).x;
+          sfGust = smoothstep(0.32, 0.68, gustSample * 0.65 + sfData.g * 0.35);
+          float swell = 0.5 + 0.5 * sin(dot(wUv, vec2(24.0, -13.0)) - uTime * 0.42 + sfData.g * 4.2);
+          sfSpark = mix(0.62, 1.0, swell) * mix(1.0, 0.68, sfGust);
+
+          // Signed depth field + multi-frequency noise for organic crystalline salt shoreline (Saltline AR+DR)
+          float shoreNoise = clamp(0.5 + (sN1.x * 0.4 + sN2.y * 0.35 + sN3.x * 0.25) * 0.5, 0.0, 1.0);
+          float rawDepth = (sfData.r - 0.5) * 2.0 + (shoreNoise - 0.5) * 0.05;
+          sfWaterMask = smoothstep(0.0, 0.032, rawDepth);
+          sfDeep = smoothstep(0.0, 0.44, rawDepth);
+          sfRidgeMask = sfData.b;
+
+          // Crystalline white salt-edge evaporite rim along the water-crust transition (SDF + noise threshold)
+          float absEdge = abs(rawDepth);
+          float edgeBandW = 0.022 + sfData.g * sfData.g * 0.058;
+          float band = 1.0 - smoothstep(0.0, edgeBandW, absEdge);
+          sfShoreFoam = clamp(band * smoothstep(0.30, 0.64, sfData.g * 0.50 + shoreNoise * 0.36 + band * 0.32), 0.0, 1.0);
+
+          // Combined multi-layer water normal slope (anisotropic wind fetch stretches sun glint into a liquid band)
+          sfWaterSlope = (sN1.xy * 0.16 + sN2.xy * 0.115 + sN3.xy * 0.055) * mix(0.45, 1.28, sfGust);
+          sfWaterSlope *= vec2(1.38, 0.72);
+          sfWaterSlope += vec2(-0.032, 0.015) * (swell - 0.5);
+          sfWaterSlope *= (1.0 - sfShoreFoam * 0.65);
+
+          // Submerged bed refraction + shallow-to-deep brine water body color (dark mirror base in deeper basins)
+          if (sfWaterMask > 0.005) {
+            vec2 refrUv = vec2(vMapUv.x + sfWaterSlope.x * 0.004 * (1.0 - sfDeep * 0.6), clamp(vMapUv.y + sfWaterSlope.y * 0.004 * (1.0 - sfDeep * 0.6), 0.001, 0.999));
+            vec3 bedCol = texture2D(map, refrUv).rgb;
+            vec3 shallowBrine = mix(bedCol * vec3(0.84, 1.02, 1.05), vec3(0.09, 0.34, 0.38), 0.46);
+            vec3 deepBrine = vec3(0.008, 0.042, 0.068);
+            vec3 waterCol = mix(shallowBrine, deepBrine, pow(sfDeep, 0.72));
+            waterCol *= mix(1.0, 0.76, sfGust * 0.6);
+            diffuseColor.rgb = mix(diffuseColor.rgb, waterCol, sfWaterMask);
+          }
+          // Bright crystalline salt-crust rim at shoreline transition
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.97, 0.99), sfShoreFoam * 0.90);
+        }`,
+      )
+      .replace(
+        '#include <roughnessmap_fragment>',
+        `#include <roughnessmap_fragment>
+        // Crisp low-roughness mirror in brine slicks (0.036..0.10), matte on dry salt crust, medium on shore crystals
+        float waterRough = mix(0.036, 0.105, sfGust);
+        roughnessFactor = mix(roughnessFactor, waterRough, sfWaterMask);
+        roughnessFactor = mix(roughnessFactor, 0.52, sfShoreFoam * 0.85);`,
+      )
+      .replace(
+        '#include <metalnessmap_fragment>',
+        `#include <metalnessmap_fragment>
+        metalnessFactor = mix(0.03, 0.18, sfWaterMask * (1.0 - sfShoreFoam * 0.8));`,
+      )
+      .replace(
+        '#include <normal_fragment_maps>',
+        `#ifdef USE_NORMALMAP_TANGENTSPACE
+          vec3 sfCrustN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;
+          sfCrustN.xy *= normalScale;
+          vec3 sfWaterN = normalize( vec3( sfWaterSlope, 1.0 ) );
+          vec3 sfBlendedN = normalize( mix( sfCrustN, sfWaterN, sfWaterMask ) );
+          normal = normalize( tbn * sfBlendedN );
+        #endif`,
+      )
+      .replace(
+        '#include <lights_physical_fragment>',
+        `#include <lights_physical_fragment>
+        material.specularColor = mix(material.specularColor, vec3(0.085), sfWaterMask * (1.0 - sfShoreFoam * 0.7));
+        material.specularColorBlended = mix(material.specularColor, diffuseColor.rgb, metalnessFactor);`,
+      )
+      .replace(
+        '#include <lights_fragment_maps>',
+        `#include <lights_fragment_maps>
+        {
+          vec3 sfWorldN0 = normalize(inverseTransformDirection(normal, viewMatrix));
+          vec3 sfV0 = normalize(cameraPosition - vSfW);
+          float sfFres0 = 0.05 + 0.95 * pow(1.0 - clamp(dot(sfWorldN0, sfV0), 0.0, 1.0), 5.0);
+          // Amplify real scene.environment cubemap reflection on water mirror (Saltline Fresnel IBL clarity)
+          radiance *= mix(1.0, 2.15 + 2.6 * sfFres0, sfWaterMask * (1.0 - sfShoreFoam * 0.75));
+        }`,
+      )
+      .replace(
+        'vec3 outgoingLight = totalDiffuse + totalSpecular + totalEmissiveRadiance;',
+        `vec3 sfGeoN = normalize(vSfGeoN);
+        vec3 sfWorldN = normalize(inverseTransformDirection(normal, viewMatrix));
+        vec3 sfV = normalize(cameraPosition - vSfW);
+        float sfNdl = dot(sfGeoN, uSaltSun);
+        float sfDayLit = smoothstep(-0.08, 0.24, sfNdl);
+        float sfDayWrap = smoothstep(-0.34, 0.36, sfNdl);
+        float sfNdV = clamp(dot(sfWorldN, sfV), 0.0, 1.0);
+        // Schlick Fresnel pow(1 - dot(N, V), 5): steeper view reveals shallow turquoise bed, grazing view becomes pure sky mirror
+        float sfFresnel = 0.05 + 0.95 * pow(1.0 - sfNdV, 5.0);
+
+        // Sculptural directional day/night terminator modeling (tame flat HemisphereLight wrap on shadow side)
+        // while strictly guaranteeing night-side albedo floor >= 0.085 (never dead black)
+        vec3 modeledDiffuse = totalDiffuse * mix(0.24, 1.0, smoothstep(-0.18, 0.36, sfNdl));
+        vec3 sfNightFloor = diffuseColor.rgb * vec3(0.09, 0.115, 0.155) + vec3(0.008, 0.016, 0.026);
+        vec3 safeDiffuse = max(modeledDiffuse, sfNightFloor);
+
+        // Crisp sky + wispy cloud mirror reflection along reflect(-V, N) on flooded brine flats
+        vec3 sfReflDir = reflect(-sfV, sfWorldN);
+        vec3 sfMirrorSky = sfSkyCloudMirror(sfReflDir, sfGeoN, uSaltSun, uTime);
+        float sfWaterClean = sfWaterMask * (1.0 - sfShoreFoam * 0.88);
+        float sfMirrorWeight = sfWaterClean * (0.38 + 0.62 * sfFresnel) * mix(0.16, 1.0, sfDayWrap);
+        vec3 sfMirrorContrib = sfMirrorSky * sfMirrorWeight * mix(0.72, 1.15, sfDeep);
+
+        // Narrow blazing sun mirror reflection band (pow 220 core + anisotropic ripple sparkle ribbon)
+        vec3 sfSunRefl = reflect(-uSaltSun, sfWorldN);
+        float sfRdv = max(dot(sfSunRefl, sfV), 0.0);
+        // Slightly stretched reflection vector across the ripple fetch for a gleaming sun-path reflection band
+        vec3 sfBandAxis = normalize(cross(sfGeoN, uSaltSun));
+        vec3 sfAnisoN = normalize(sfWorldN + sfBandAxis * (sfWaterSlope.x * 0.85));
+        float sfRdvBand = max(dot(reflect(-uSaltSun, sfAnisoN), sfV), 0.0);
+        float sfSunCore = pow(sfRdv, 220.0);
+        float sfSunRibbon = pow(sfRdvBand, 64.0);
+        float sfSunSheen = pow(sfRdvBand, 18.0);
+        vec3 sfSunCol = vec3(1.0, 0.96, 0.84);
+        vec3 sfMirrorBand = sfSunCol * (
+          sfSunCore * 4.8 * sfSpark +
+          sfSunRibbon * 1.35 * (0.55 + 0.45 * sfSpark) +
+          sfSunSheen * 0.22
+        ) * sfWaterClean * sfDayLit;
+
+        // Subtle halite mineral crystal sparkle on raised emergent salt ridges
+        float sfRidgeGlint = pow(max(dot(sfWorldN, normalize(sfV + uSaltSun)), 0.0), 46.0) * 0.26 * sfRidgeMask * (1.0 - sfWaterMask) * sfDayLit;
+
+        // Inner atmospheric Fresnel limb glow: warm-white/pale-cyan on sunlit face, cooler cyan on terminator
+        float sfLimb = pow(1.0 - clamp(dot(sfGeoN, sfV), 0.0, 1.0), 3.1);
+        float sfTerm = smoothstep(0.18, 0.84, 1.0 - abs(sfNdl));
+        vec3 sfRimCol = mix(mix(vec3(0.96, 0.95, 0.88), uAtmo, 0.55), vec3(0.44, 0.88, 1.0), sfTerm * 0.85);
+        vec3 sfInnerRim = sfRimCol * sfLimb * mix(0.14, 0.72, smoothstep(-0.32, 0.34, sfNdl));
+
+        vec3 outgoingLight = safeDiffuse + totalSpecular + totalEmissiveRadiance + sfMirrorContrib + sfMirrorBand + vec3(1.0, 0.97, 0.90) * sfRidgeGlint + sfInnerRim;`,
+      );
+  };
+
+  const sphere = new THREE.Mesh(new THREE.SphereGeometry(R, 96, 64), surfaceMat);
+  surface.add(sphere);
+
+  // 2) Dual-layer atmospheric Fresnel halo: 1.05R narrow bright rim + 1.16R wide mist, cooler on terminator
+  const makeSaltHalo = (scale: number, peakPow: number, gain: number, cacheKey: string): THREE.Mesh => {
+    const edge = Math.sqrt(1 - 1 / (scale * scale));
+    const mat = new THREE.MeshBasicMaterial({
+      color: atmoCol,
+      side: THREE.BackSide,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    mat.customProgramCacheKey = () => cacheKey;
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uSaltSun = saltUniforms.uSaltSun;
+      shader.uniforms.uEdge = { value: edge };
+      shader.uniforms.uPow = { value: peakPow };
+      shader.uniforms.uGain = { value: gain };
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vShN;\nvarying vec3 vShW;')
+        .replace(
+          '#include <project_vertex>',
+          'vShN = normalize(mat3(modelMatrix) * normal);\nvShW = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <project_vertex>',
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform vec3 uSaltSun;\nuniform float uEdge;\nuniform float uPow;\nuniform float uGain;\nvarying vec3 vShN;\nvarying vec3 vShW;')
+        .replace(
+          'vec4 diffuseColor = vec4( diffuse, opacity );',
+          `vec3 n = normalize(vShN);
+          vec3 v = normalize(cameraPosition - vShW);
+          float d = clamp(-dot(n, v) / uEdge, 0.0, 1.0);
+          float a = pow(d, uPow);
+          float ndl = dot(n, uSaltSun);
+          float lit = mix(0.16, 1.0, smoothstep(-0.34, 0.34, ndl));
+          // Warm ivory-cyan on sunlit limb, cooler cerulean-aqua across the terminator
+          float term = smoothstep(0.18, 0.85, 1.0 - abs(ndl));
+          vec3 sunTint = mix(diffuse, vec3(0.98, 0.95, 0.86), 0.42 * smoothstep(0.1, 0.8, ndl));
+          vec3 coolTerm = vec3(0.40, 0.86, 1.00);
+          vec3 tint = mix(sunTint, coolTerm, term * 0.78);
+          vec4 diffuseColor = vec4(tint * a * lit * uGain, 1.0);`,
+        );
+    };
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(R * scale, 56, 36), mat);
+    mesh.renderOrder = 2;
+    return mesh;
+  };
+  g.add(
+    makeSaltHalo(HALO_SCALE, 2.9, 0.42, 'saltflat-halo-wide-v1'),
+    makeSaltHalo(HALO_SCALE_NARROW, 5.8, 0.56, 'saltflat-halo-narrow-v1'),
+  );
+
+  // 3) 1.02R ultra-thin brine mist shell (FrontSide, strictly opacity <= 0.10 so mirror surface stays razor clear)
+  const mistMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0xcff6fa),
+    transparent: true,
+    opacity: 0.10,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  mistMat.customProgramCacheKey = () => 'saltflat-mist-v1';
+  mistMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = saltUniforms.uTime;
+    shader.uniforms.uSaltSun = saltUniforms.uSaltSun;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vSmN;\nvarying vec3 vSmW;')
+      .replace(
+        '#include <project_vertex>',
+        'vSmN = normalize(mat3(modelMatrix) * normal);\nvSmW = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <project_vertex>',
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+        uniform float uTime;
+        uniform vec3 uSaltSun;
+        varying vec3 vSmN;
+        varying vec3 vSmW;
+        float smHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+        float smNoise(vec3 p) {
+          vec3 i = floor(p); vec3 f = fract(p);
+          vec3 u = f * f * (3.0 - 2.0 * f);
+          return mix(
+            mix(mix(smHash(i), smHash(i + vec3(1.0, 0.0, 0.0)), u.x),
+                mix(smHash(i + vec3(0.0, 1.0, 0.0)), smHash(i + vec3(1.0, 1.0, 0.0)), u.x), u.y),
+            mix(mix(smHash(i + vec3(0.0, 0.0, 1.0)), smHash(i + vec3(1.0, 0.0, 1.0)), u.x),
+                mix(smHash(i + vec3(0.0, 1.0, 1.0)), smHash(i + vec3(1.0, 1.0, 1.0)), u.x), u.y),
+            u.z);
+        }`,
+      )
+      .replace(
+        'vec4 diffuseColor = vec4( diffuse, opacity );',
+        `vec3 n = normalize(vSmN);
+        vec3 v = normalize(cameraPosition - vSmW);
+        float ndl = dot(n, uSaltSun);
+        float day = smoothstep(-0.22, 0.42, ndl);
+        float rim = pow(1.0 - clamp(dot(n, v), 0.0, 1.0), 1.65);
+        float wisp = smNoise(n * 4.8 + vec3(uTime * 0.032, -uTime * 0.018, uTime * 0.025));
+        float fine = smNoise(n * 11.5 - vec3(uTime * 0.04, uTime * 0.02, -uTime * 0.03));
+        float alpha = clamp((0.18 + 0.82 * rim) * (0.40 + 0.60 * wisp * (0.65 + 0.35 * fine)) * mix(0.18, 1.0, day) * opacity, 0.0, 0.10);
+        vec3 mistTint = mix(vec3(0.60, 0.92, 0.98), vec3(0.98, 0.95, 0.88), smoothstep(0.15, 0.85, ndl) * 0.45);
+        vec4 diffuseColor = vec4(mistTint, alpha);`,
+      );
+  };
+  const mistMesh = new THREE.Mesh(new THREE.SphereGeometry(R * 1.02, 56, 36), mistMat);
+  mistMesh.renderOrder = 1;
+  g.add(mistMesh);
+
+  // 4) 160 instanced backlit salt-crystal brine dust motes in the exosphere (1.06R..1.34R, 1 draw call)
+  const moteCount = 160;
+  const moteGeo = new THREE.OctahedronGeometry(1, 0);
+  const moteMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.72,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  moteMat.customProgramCacheKey = () => 'saltflat-motes-v1';
+  moteMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = saltUniforms.uTime;
+    shader.uniforms.uSaltSun = saltUniforms.uSaltSun;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vMtW;\nvarying float vMtSeed;')
+      .replace(
+        '#include <project_vertex>',
+        `vec4 mtWorld = modelMatrix * instanceMatrix * vec4(transformed, 1.0);
+        vMtW = mtWorld.xyz;
+        vMtSeed = fract(sin(dot(instanceMatrix[3].xyz, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+        #include <project_vertex>`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform vec3 uSaltSun;\nvarying vec3 vMtW;\nvarying float vMtSeed;')
+      .replace(
+        'vec4 diffuseColor = vec4( diffuse, opacity );',
+        `vec3 vDir = normalize(cameraPosition - vMtW);
+        float backLit = 0.55 + 0.45 * pow(max(dot(-vDir, uSaltSun), 0.0), 2.2);
+        float twinkle = 0.58 + 0.42 * sin(uTime * 1.9 + vMtSeed * 62.83);
+        vec3 col = mix(vec3(0.68, 0.95, 0.98), vec3(1.0, 0.95, 0.82), vMtSeed);
+        vec4 diffuseColor = vec4(col * (0.85 + 0.55 * backLit) * twinkle, opacity * twinkle);`,
+      );
+  };
+  const motes = new THREE.InstancedMesh(moteGeo, moteMat, moteCount);
+  motes.name = 'dustMotes';
+  const mm = new THREE.Matrix4();
+  const mq = new THREE.Quaternion();
+  const me = new THREE.Euler();
+  const mPos = new THREE.Vector3();
+  const mSc = new THREE.Vector3();
+  for (let i = 0; i < moteCount; i++) {
+    const phi = rnd() * Math.PI * 2;
+    // Slight mid-latitude / equatorial concentration so backlit motes gleam around the atmospheric limb
+    const cosTh = (rnd() * 2 - 1) * 0.88;
+    const sinTh = Math.sqrt(Math.max(0, 1 - cosTh * cosTh));
+    const rad = R * (1.05 + Math.pow(rnd(), 0.8) * 0.20);
+    mPos.set(rad * sinTh * Math.cos(phi), rad * cosTh, rad * sinTh * Math.sin(phi));
+    mq.setFromEuler(me.set(rnd() * Math.PI * 2, rnd() * Math.PI * 2, rnd() * Math.PI * 2));
+    const sz = R * (0.0085 + rnd() * 0.008);
+    mSc.set(sz * 1.35, sz * 0.72, sz);
+    mm.compose(mPos, mq, mSc);
+    motes.setMatrixAt(i, mm);
+  }
+  motes.instanceMatrix.needsUpdate = true;
+  motes.renderOrder = 3;
+  tilt.add(motes);
+
+  g.userData.saltUniforms = saltUniforms;
+  return g;
+}
+
 function haloShell(p: PlanetDef, scale: number, peakPow: number, gain: number, atmo: THREE.Color, selfLit = false): THREE.Mesh {
   return new THREE.Mesh(
     new THREE.SphereGeometry(p.radius * scale, 48, 32),
@@ -2270,6 +2710,7 @@ function buildPlanet(p: PlanetDef): THREE.Group {
   if (p.kind === 'blackhole') return buildBlackhole(p);
   if (p.kind === 'ring-city') return buildRingCity(p);
   if (p.kind === 'magnetar') return buildMagnetar(p);
+  if (p.kind === 'saltflat') return buildSaltflat(p);
 
   if (p.kind === 'red-giant') {
     const surfaceMat = new THREE.ShaderMaterial({
@@ -2623,6 +3064,23 @@ export function buildSpace(): SpaceView {
     near.add(magGlowLight);
   }
 
+  // Dedicated warm-gold directional key light + cool-aqua brine bounce point light for `saltflat`
+  // (strictly inside `near` and distance-attenuated so cabin and distant planets are never polluted)
+  const saltPlanet = PLANETS.find((p) => p.kind === 'saltflat');
+  const saltCenter = saltPlanet ? new THREE.Vector3(saltPlanet.pos.x, saltPlanet.pos.y, saltPlanet.pos.z) : null;
+  const saltKeyLight = saltPlanet ? new THREE.DirectionalLight(0xf7e9c8, 0) : null;
+  if (saltKeyLight && saltCenter) {
+    saltKeyLight.position.copy(saltCenter).addScaledVector(SALT_SUN_DIR, 350);
+    saltKeyLight.target.position.copy(saltCenter);
+    saltKeyLight.target.updateMatrixWorld();
+    near.add(saltKeyLight, saltKeyLight.target);
+  }
+  const saltBounceLight = saltPlanet ? new THREE.PointLight(0x7be8e6, 0, saltPlanet.radius * 5.8, 0.75) : null;
+  if (saltBounceLight && saltCenter && saltPlanet) {
+    saltBounceLight.position.copy(saltCenter).addScaledVector(SALT_SUN_DIR, saltPlanet.radius * 1.25);
+    near.add(saltBounceLight);
+  }
+
   // stardust: points in a box around the ship, wrapped as it moves
   const rnd = mulberry32(3);
   const dust = new Float32Array(DUST_COUNT * 3);
@@ -2664,6 +3122,8 @@ export function buildSpace(): SpaceView {
         for (const m of (p.userData.timeMats ?? []) as THREE.ShaderMaterial[]) m.uniforms.uTime.value = t;
         const magU = p.userData.magUniforms as { uTime: { value: number } } | undefined;
         if (magU) magU.uTime.value = t;
+        const saltU = p.userData.saltUniforms as { uTime: { value: number } } | undefined;
+        if (saltU) saltU.uTime.value = t;
         const bhU = p.userData.bhUniforms as { uTime: { value: number }; uCamPhase: { value: number } } | undefined;
         if (bhU) {
           bhU.uTime.value = t;
@@ -2787,6 +3247,14 @@ export function buildSpace(): SpaceView {
         magRimLight.target.position.copy(shipPos);
         magRimLight.target.updateMatrixWorld();
         magGlowLight.intensity = 2.2 * w;
+      }
+      if (saltCenter && saltPlanet && saltKeyLight && saltBounceLight) {
+        // smooth distance attenuation: full strength <= 4.5R (covers 4.0R close-up & 3.2R scan), zero >= 6.8R
+        const dSf = shipPos.distanceTo(saltCenter);
+        const u = Math.max(0, Math.min(1, (dSf - saltPlanet.radius * 4.5) / (saltPlanet.radius * 2.3)));
+        const w = 1 - u * u * (3 - 2 * u);
+        saltKeyLight.intensity = 1.35 * w;
+        saltBounceLight.intensity = 1.85 * w;
       }
       beacon.scale.setScalar(1 + 0.5 * Math.max(0, Math.sin(t * 3)));
       // wrap dust into the box centred on the ship

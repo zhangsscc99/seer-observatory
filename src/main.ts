@@ -71,6 +71,7 @@ const ringCityPlanet = planetById('ring-city');
 let tidalFlash = 0;
 let archive = emptyArchive();
 let targetId: string | null = null;
+let focusedPlanetId: string | null = null;
 try {
   archive = parseArchive(localStorage.getItem(ARCHIVE_KEY));
 } catch {
@@ -106,6 +107,7 @@ const mode = new ModeMachine('cabin', {
       cam.shipYaw = 0.5; // start off-axis so the camera swings in behind the ship
       cam.shipPitch = -0.15;
       cam.focusFovV = 0;
+      focusedPlanetId = null;
     } else {
       // step back out of the hologram, facing the room
       robot.x = CABIN.pedestal.x;
@@ -114,6 +116,7 @@ const mode = new ModeMachine('cabin', {
       robot.heading = 0;
       cam.yaw = 0;
       cam.pitch = 0.3;
+      focusedPlanetId = null;
       hud.setWarn(null, null);
       hud.setScan(null, 0, false);
       tidalField.reset();
@@ -157,13 +160,14 @@ function applyTargetHolo(p: PlanetDef): void {
   if (p.kind === 'binary') cabin.setHoloColor(0xbfe0ff, 0xffb066);
   else if (p.kind === 'blackhole') cabin.setHoloColor(0xf4ecff, 0x3b186e);
   else if (p.kind === 'ring-city') cabin.setHoloColor(0xfff1dc, 0xffb464);
+  else if (p.kind === 'saltflat') cabin.setHoloColor(0x9cf0f4, 0xf2e4c4);
   else cabin.setHoloColor(p.colors[2]);
 }
 function previewTarget(id: string): void {
   const p = planetById(id);
   if (!p) return;
   applyTargetHolo(p);
-  if ((p.kind === 'blackhole' || p.kind === 'ring-city') && p.hazard) {
+  if ((p.kind === 'blackhole' || p.kind === 'ring-city' || p.kind === 'magnetar' || p.kind === 'saltflat') && p.hazard) {
     hud.setWarn(hazardEffect(p.hazard).warn, p.hazard);
   } else if (mode.mode === 'cabin') {
     hud.setWarn(null, null);
@@ -342,7 +346,14 @@ function nearestScanTarget(): ScanTarget | null {
 
 function updateSpace(dt: number, active: boolean): void {
   controls.consumeLook();
-  const near = nearestScanTarget();
+  if (active && (Math.abs(controls.moveX) > 0.05 || Math.abs(controls.moveY) > 0.05 || controls.boost || controls.brake)) {
+    cam.focusFovV = 0;
+    focusedPlanetId = null;
+  }
+  const focusedPlanet = focusedPlanetId === null ? undefined : planetById(focusedPlanetId);
+  const near: ScanTarget | null = focusedPlanet
+    ? { id: focusedPlanet.id, name: focusedPlanet.name, radius: focusedPlanet.radius, hazard: focusedPlanet.hazard }
+    : nearestScanTarget();
   const hazard = hazardEffect(near?.hazard);
   ship.update(
     dt,
@@ -419,7 +430,11 @@ function updateSpace(dt: number, active: boolean): void {
     tidalZone === 'crush'
       ? 'tidal'
       : near?.hazard ??
-        (selectedPlanet?.kind === 'binary' || selectedPlanet?.kind === 'blackhole' || selectedPlanet?.kind === 'ring-city'
+        (selectedPlanet?.kind === 'binary' ||
+        selectedPlanet?.kind === 'blackhole' ||
+        selectedPlanet?.kind === 'ring-city' ||
+        selectedPlanet?.kind === 'magnetar' ||
+        selectedPlanet?.kind === 'saltflat'
           ? selectedPlanet.hazard
           : undefined);
   const warnText =
@@ -538,6 +553,13 @@ window.__seer = {
   focusPlanet(id: string) {
     const p = planetById(id);
     if (!p || mode.mode !== 'space') return false;
+    // T14: sync active target, holo/marker, top goal line & scan bar to the focused planet
+    focusedPlanetId = id;
+    targetId = id;
+    space.setTarget(id);
+    applyTargetHolo(p);
+    hud.setGoal(`航行至 ${p.name} 执行扫描`);
+    hud.setTargets(PLANETS, id, selectTarget, previewTarget);
     const dir = new THREE.Vector3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z);
     let dist = p.radius * 3;
     cam.focusFovV = 0;
@@ -614,6 +636,10 @@ window.__seer = {
         .multiplyScalar(Math.cos(el))
         .addScaledVector(pole, Math.sin(el))
         .normalize();
+    } else if (p.kind === 'saltflat') {
+      // 4.0R 侧斜 3/4 构图（~73° 太阳夹角，略抬仰角）：让镜面反光带 + 云影 + 多边形盐壳裂纹 + 干涸潮沟 + 晨昏线冷青边缘光晕同框
+      dist = p.radius * 4.0;
+      dir.set(0.88, 0.18, 0.44).normalize();
     }
     ship.pos.x = p.pos.x + dir.x * dist;
     ship.pos.y = p.pos.y + dir.y * dist;
@@ -625,6 +651,7 @@ window.__seer = {
     ship.yaw = Math.atan2(-fx / fl, -fz / fl);
     ship.pitch = Math.asin(fy / fl);
     if (p.kind === 'magnetar') ship.pitch -= 0.08;
+    else if (p.kind === 'saltflat') ship.pitch -= 0.055;
     ship.roll = 0;
     ship.speed = SHIP.brakeSpeed;
     ship.energy = SHIP.energyMax;
@@ -636,6 +663,8 @@ window.__seer = {
       cam.focusFovV = aspect < 1 ? 88 : 66;
     } else if (p.kind === 'magnetar') {
       cam.focusFovV = aspect < 1 ? 104 : 66;
+    } else if (p.kind === 'saltflat') {
+      cam.focusFovV = aspect < 1 ? 82 : 66;
     } else if (p.kind === 'binary') {
       // angular-separation / FOV check: ensure both stars stay inside the frame with margin on landscape & portrait
       const portrait = aspect < 1;
