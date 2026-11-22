@@ -1226,20 +1226,27 @@ function buildRingCity(p: PlanetDef): THREE.Group {
   );
   surface.add(innerRing, transitLine);
 
-  // 2) Dense architectural window light grid (>= 600 instanced emissive patches, gain 1.85)
+  // 2) Dense architectural window light grid: 3 brightness tiers (1.9 / 1.35 / 0.7) via setColorAt,
+  //    7:3 cool:warm mix, 28% unlit for crisp urban rhythm (single MeshBasicMaterial)
   type WinSlot = { x: number; y: number; z: number; rotX: number; rotY: number; sx: number; sy: number; col: THREE.Color };
   const winSlots: WinSlot[] = [];
-  const warmWhite = new THREE.Color(0xfff1d6);
-  const amber = new THREE.Color(0xffb464);
-  const ivory = new THREE.Color(0xffe2b0);
-  const dimGold = new THREE.Color(0x78532c);
+  const coolWhite = new THREE.Color(0xeaf4ff);
+  const paleCyan = new THREE.Color(0xcceaff);
+  const warmAmber = new THREE.Color(0xffb464);
+  const warmCream = new THREE.Color(0xffe4b2);
+  const WIN_BASE_GAIN = 1.35;
   const pickWinColor = (): THREE.Color | null => {
     const v = rnd();
     if (v < 0.28) return null; // unlit window for realistic residential/commercial rhythm
-    if (v < 0.56) return warmWhite;
-    if (v < 0.82) return amber;
-    if (v < 0.92) return ivory;
-    return dimGold;
+    // 7:3 cool:warm palette split
+    const isCool = rnd() < 0.7;
+    const base = isCool
+      ? (rnd() < 0.62 ? coolWhite : paleCyan)
+      : (rnd() < 0.58 ? warmAmber : warmCream);
+    // 3-tier luminance gain: bright core 1.9 / regular 1.35 / dim 0.7 (scaled against winMat 1.35)
+    const t = rnd();
+    const gain = t < 0.20 ? 1.9 : t < 0.68 ? 1.35 : 0.7;
+    return base.clone().multiplyScalar(gain / WIN_BASE_GAIN);
   };
 
   // Outer facade (3 rows × 108 cols), inner facade (2 rows × 96 cols),
@@ -1378,7 +1385,59 @@ function buildRingCity(p: PlanetDef): THREE.Group {
   stripMesh.instanceMatrix.needsUpdate = true;
   surface.add(modMesh, stripMesh);
 
+  // 4b) >=24 sets (36 sets) of instanced outer-ring greebles (all <= 0.06R):
+  //     radiator fins, antenna masts, and service/hangar bay housings placed uniformly + jitter
+  const detailSets = 36;
+  const finGeo = new THREE.BoxGeometry(R * 0.012, R * 0.044, R * 0.056);
+  const mastGeo = new THREE.CylinderGeometry(R * 0.004, R * 0.009, R * 0.058, 6);
+  const bayGeo = new THREE.BoxGeometry(R * 0.058, R * 0.036, R * 0.030);
+  const finMesh = new THREE.InstancedMesh(finGeo, hullMat, detailSets);
+  const mastMesh = new THREE.InstancedMesh(mastGeo, hullMat, detailSets);
+  const bayMesh = new THREE.InstancedMesh(bayGeo, trimMat, detailSets);
+  let dIdx = 0;
+  for (let mod = 0; mod < 12; mod++) {
+    const baseDeg = mod * 30;
+    for (let slot = 0; slot < 3; slot++) {
+      // 3 slots cleanly inside each 30° inter-module span (~7.5°, 15°, 22.5°) + subtle jitter
+      const finDeg = baseDeg + 6.5 + slot * 8.2 + (rnd() - 0.5) * 1.4;
+      const finA = (finDeg * Math.PI) / 180;
+      const finR = R * (1.774 + (rnd() - 0.5) * 0.008);
+      const finY = (dIdx % 2 === 0 ? 1 : -1) * R * (0.018 + rnd() * 0.014);
+      q.setFromEuler(e.set(0, finA, 0));
+      scV.set(1, 0.82 + rnd() * 0.18, 0.82 + rnd() * 0.18);
+      m.compose(posV.set(Math.sin(finA) * finR, finY, Math.cos(finA) * finR), q, scV);
+      finMesh.setMatrixAt(dIdx, m);
+
+      const mastDeg = baseDeg + 8.5 + slot * 7.8 + (rnd() - 0.5) * 1.6;
+      const mastA = (mastDeg * Math.PI) / 180;
+      const mastR = R * (1.695 + (rnd() - 0.5) * 0.045);
+      const mastUp = dIdx % 3 !== 2;
+      const mastY = (mastUp ? 1 : -1) * (mainH + R * 0.028);
+      q.setFromEuler(e.set(mastUp ? 0 : Math.PI, mastA, 0));
+      scV.set(1, 0.72 + rnd() * 0.28, 1);
+      m.compose(posV.set(Math.sin(mastA) * mastR, mastY, Math.cos(mastA) * mastR), q, scV);
+      mastMesh.setMatrixAt(dIdx, m);
+
+      const bayDeg = baseDeg + 7.2 + slot * 8.0 + (rnd() - 0.5) * 1.5;
+      const bayA = (bayDeg * Math.PI) / 180;
+      const bayR = R * (1.735 + (rnd() - 0.5) * 0.014);
+      const bayY = (dIdx % 2 === 0 ? 1 : -1) * (mainH + R * 0.015);
+      q.setFromEuler(e.set(0, bayA, 0));
+      scV.set(0.84 + rnd() * 0.16, 0.85 + rnd() * 0.15, 0.85 + rnd() * 0.15);
+      m.compose(posV.set(Math.sin(bayA) * bayR, bayY, Math.cos(bayA) * bayR), q, scV);
+      bayMesh.setMatrixAt(dIdx, m);
+
+      dIdx++;
+    }
+  }
+  scV.set(1, 1, 1);
+  for (const im of [finMesh, mastMesh, bayMesh]) {
+    im.instanceMatrix.needsUpdate = true;
+    surface.add(im);
+  }
+
   // 5) 4 opposing docking towers (0, 90, 180, 270 deg): pylon + ring platforms + top beacon
+  //    + rectangular dark hangar bay mouths with inner warm light strips at each tower base
   const towerBodyGeo = new THREE.BoxGeometry(R * 0.11, R * 0.68, R * 0.15);
   const towerBody = new THREE.InstancedMesh(towerBodyGeo, hullMat, 4);
   const towerCollarGeo = new THREE.CylinderGeometry(R * 0.145, R * 0.16, R * 0.048, 12);
@@ -1390,6 +1449,11 @@ function buildRingCity(p: PlanetDef): THREE.Group {
   const towerSpire = new THREE.InstancedMesh(towerSpireGeo, trimMat, 4);
   const towerTopLampGeo = new THREE.SphereGeometry(R * 0.026, 12, 10);
   const towerTopLamp = new THREE.InstancedMesh(towerTopLampGeo, glow(0xffd28a, 2.15), 4);
+  const hangarDarkMat = new THREE.MeshStandardMaterial({ color: 0x0a0f18, roughness: 0.92, metalness: 0.1 });
+  const towerHangarGeo = new THREE.BoxGeometry(R * 0.072, R * 0.068, R * 0.158);
+  const towerHangar = new THREE.InstancedMesh(towerHangarGeo, hangarDarkMat, 4);
+  const towerHangarStripGeo = new THREE.BoxGeometry(R * 0.056, R * 0.014, R * 0.162);
+  const towerHangarStrip = new THREE.InstancedMesh(towerHangarStripGeo, glow(0xffb866, 1.85), 4);
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2;
     const rx = Math.sin(a) * R * 1.65;
@@ -1397,6 +1461,10 @@ function buildRingCity(p: PlanetDef): THREE.Group {
     q.setFromEuler(e.set(0, a, 0));
     m.compose(posV.set(rx, R * 0.12, rz), q, scV);
     towerBody.setMatrixAt(i, m);
+    m.compose(posV.set(rx, R * 0.152, rz), q, scV);
+    towerHangar.setMatrixAt(i, m);
+    m.compose(posV.set(rx, R * 0.170, rz), q, scV);
+    towerHangarStrip.setMatrixAt(i, m);
     m.compose(posV.set(rx, R * 0.30, rz), q, scV);
     towerCollar.setMatrixAt(i, m);
     towerRingLight.setMatrixAt(i, m);
@@ -1405,7 +1473,7 @@ function buildRingCity(p: PlanetDef): THREE.Group {
     m.compose(posV.set(rx, R * 0.61, rz), q, scV);
     towerTopLamp.setMatrixAt(i, m);
   }
-  for (const im of [towerBody, towerCollar, towerRingLight, towerSpire, towerTopLamp]) {
+  for (const im of [towerBody, towerHangar, towerHangarStrip, towerCollar, towerRingLight, towerSpire, towerTopLamp]) {
     im.instanceMatrix.needsUpdate = true;
     surface.add(im);
   }
