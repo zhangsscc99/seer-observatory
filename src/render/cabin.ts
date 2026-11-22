@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { CABIN, CONSOLES, polar, seatPositions } from '../game/cabin.ts';
 import { MAT, arc, createWindowGlassMaterial, glow } from './materials.ts';
 import { PAL } from './palette.ts';
-import { consoleScreenTexture, floorTextures, radialTexture } from './textures.ts';
+import { consoleScreenTexture, contactShadowTexture, floorTextures, radialTexture } from './textures.ts';
 
 const D2R = Math.PI / 180;
 
@@ -278,49 +278,93 @@ export function buildCabin(): CabinView {
   const ped = buildPedestal();
   group.add(ped.group);
 
-  // contact shadows: soft radial pools grounding seats, consoles, pedestal
-  const shadowTex = radialTexture([[0, 'rgba(8,16,34,0.45)'], [0.55, 'rgba(8,16,34,0.18)'], [1, 'rgba(8,16,34,0)']]);
-  const shadowMat = new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false });
-  const shadowAt = (x: number, z: number, sx: number, sz: number, deg = 0): void => {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(sx, sz), shadowMat);
+  // contact shadows: shared radial alpha decal grounding seats, consoles, pedestal & pillars
+  // placed at y = 0.011 (above light spills, below robot feet) with slight offset away from port-bow key light
+  const shadowTex = contactShadowTexture();
+  const seatShadowMat = new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, opacity: 0.56, depthWrite: false });
+  const heavyShadowMat = new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, opacity: 0.58, depthWrite: false });
+  const consoleShadowMat = new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, opacity: 0.44, depthWrite: false });
+  const shadowAt = (
+    x: number,
+    z: number,
+    sx: number,
+    sz: number,
+    mat: THREE.Material,
+    deg = 0,
+    dx = 0.08,
+    dz = 0.08,
+  ): void => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(sx, sz), mat);
     m.rotation.x = -Math.PI / 2;
     m.rotation.z = deg * D2R;
-    m.position.set(x, 0.006, z);
+    m.position.set(x + dx, 0.011, z + dz);
+    m.renderOrder = 2;
     group.add(m);
   };
-  for (const s of seatPositions()) shadowAt(s.x, s.z, 1.15, 1.15);
+  for (const s of seatPositions()) shadowAt(s.x, s.z, 1.08, 1.08, seatShadowMat, 0, 0.07, 0.07);
   for (const c of CONSOLES) {
-    const mid = (c.a0 + c.a1) / 2;
-    const p = polar(mid, (CABIN.consoleInnerR + CABIN.consoleOuterR) / 2);
-    shadowAt(p.x, p.z, 4.4, 1.9, mid);
+    const midR = (CABIN.consoleInnerR + CABIN.consoleOuterR) / 2;
+    for (const f of [0.22, 0.5, 0.78]) {
+      const deg = c.a0 + (c.a1 - c.a0) * f;
+      const p = polar(deg, midR);
+      shadowAt(p.x, p.z, 1.85, 1.65, consoleShadowMat, deg, 0.09, 0.09);
+    }
   }
-  shadowAt(CABIN.pedestal.x, CABIN.pedestal.z, 3.0, 3.0);
+  shadowAt(CABIN.pedestal.x, CABIN.pedestal.z, 2.95, 2.95, heavyShadowMat, 0, 0.14, 0.14);
+  for (const d of CABIN.pillars) {
+    const p = polar(d, R - 0.12);
+    shadowAt(p.x, p.z, 1.35, 1.35, consoleShadowMat, d, 0.06, 0.06);
+  }
 
-  // light spill: soft additive pools on the floor under each window + glow at the sill
-  const spillTex = radialTexture([[0, 'rgba(120,200,255,0.55)'], [0.5, 'rgba(90,150,255,0.18)'], [1, 'rgba(60,110,255,0)']]);
-  const spillMat = new THREE.MeshBasicMaterial({ map: spillTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  // light spill: warm-ivory & pale-blue directional spill landing on the floor under the windows
+  const warmSpillTex = radialTexture([
+    [0, 'rgba(255,238,198,0.34)'],
+    [0.42, 'rgba(182,222,255,0.16)'],
+    [1, 'rgba(90,150,255,0)'],
+  ]);
+  const coolSpillTex = radialTexture([
+    [0, 'rgba(130,205,255,0.32)'],
+    [0.5, 'rgba(90,150,255,0.11)'],
+    [1, 'rgba(60,110,255,0)'],
+  ]);
+  const warmSpillMat = new THREE.MeshBasicMaterial({
+    map: warmSpillTex,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const coolSpillMat = new THREE.MeshBasicMaterial({
+    map: coolSpillTex,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
   const windows = [65.5, 120.5, 180, 239.5, 294.5];
   for (const d of windows) {
-    const pool = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 2.2), spillMat);
+    // warm directional landing patch shifted slightly inward along key-light direction
+    const pool = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 2.6), warmSpillMat);
     pool.rotation.x = -Math.PI / 2;
-    const p = polar(d, R - 0.9);
-    pool.position.set(p.x, 0.012, p.z);
+    const p = polar(d, R - 1.25);
+    pool.position.set(p.x + 0.35, 0.008, p.z + 0.35);
     pool.rotation.z = d * D2R;
-    const halo = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.3), spillMat);
+    pool.renderOrder = 1;
+    // subtle sill bounce halo
+    const halo = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 1.15), coolSpillMat);
     place(halo, d, R - 0.02, 0.98);
     halo.rotation.y += Math.PI;
     group.add(pool, halo);
   }
-  // green pool under the hologram
+  // green pool under the hologram (kept below pedestal contact shadow so pedestal stays grounded)
   const holoPool = new THREE.Mesh(
-    new THREE.PlaneGeometry(4.2, 4.2),
+    new THREE.PlaneGeometry(4.0, 4.0),
     new THREE.MeshBasicMaterial({
-      map: radialTexture([[0, 'rgba(77,255,160,0.5)'], [0.45, 'rgba(77,255,160,0.14)'], [1, 'rgba(77,255,160,0)']]),
+      map: radialTexture([[0, 'rgba(77,255,160,0.36)'], [0.45, 'rgba(77,255,160,0.12)'], [1, 'rgba(77,255,160,0)']]),
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     }),
   );
   holoPool.rotation.x = -Math.PI / 2;
-  holoPool.position.set(CABIN.pedestal.x, 0.014, CABIN.pedestal.z);
+  holoPool.position.set(CABIN.pedestal.x, 0.009, CABIN.pedestal.z);
+  holoPool.renderOrder = 1;
   group.add(holoPool);
 
   // lights: directional key slanting from port-bow window/skylight + low hemisphere fill

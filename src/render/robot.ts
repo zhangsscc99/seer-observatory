@@ -7,7 +7,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { MAT, glow } from './materials.ts';
 import { PAL } from './palette.ts';
-import { radialTexture } from './textures.ts';
+import { contactShadowTexture } from './textures.ts';
 
 export interface RobotView {
   group: THREE.Group;
@@ -234,17 +234,17 @@ function expressRig(model: THREE.Object3D): Rig | null {
 export function buildRobot(): RobotView {
   const group = new THREE.Group();
 
-  // contact shadow blob — stays whatever the rig is
-  const shadow = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.95, 0.95),
-    new THREE.MeshBasicMaterial({
-      map: radialTexture([[0, 'rgba(10,20,45,0.6)'], [0.55, 'rgba(10,20,45,0.28)'], [1, 'rgba(10,20,45,0)']]),
-      transparent: true, depthWrite: false,
-    }),
-  );
+  // contact shadow blob — reuses shared radial alpha decal, follows robot position automatically
+  const shadowMat = new THREE.MeshBasicMaterial({
+    map: contactShadowTexture(),
+    transparent: true,
+    opacity: 0.58,
+    depthWrite: false,
+  });
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.92), shadowMat);
   shadow.rotation.x = -Math.PI / 2;
-  shadow.position.y = 0.016;
-  shadow.renderOrder = 1;
+  shadow.position.y = 0.013;
+  shadow.renderOrder = 2;
   group.add(shadow);
 
   let rig = primitiveRig();
@@ -308,6 +308,9 @@ export function buildRobot(): RobotView {
       const run = Math.max(0, Math.min(1, (speed - 2.4) / 2));
       const a = (phase / 0.55) * Math.PI; // one stride per 0.55 m, per leg alternates
       hoverK += ((hover ? 1 : 0) - hoverK) * Math.min(1, dt * 4);
+      // ground contact shadow softens & expands subtly when hovering during launch burn
+      shadow.scale.setScalar(1 + hoverK * 0.28);
+      shadowMat.opacity = 0.58 * (1 - hoverK * 0.45);
 
       if (rig.solid) {
         // monolith mesh — no limbs to articulate, move the whole body:

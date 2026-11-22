@@ -296,6 +296,23 @@ export function radialTexture(stops: [number, string][], size = 128): THREE.Text
   return tex(c);
 }
 
+let cachedContactShadow: THREE.Texture | null = null;
+/** Shared procedural radial alpha contact-shadow texture (generated once, reused across cabin & robot). */
+export function contactShadowTexture(): THREE.Texture {
+  if (!cachedContactShadow) {
+    cachedContactShadow = radialTexture(
+      [
+        [0, 'rgba(5,10,22,1)'],
+        [0.42, 'rgba(5,10,22,0.88)'],
+        [0.72, 'rgba(8,16,32,0.34)'],
+        [1, 'rgba(8,16,32,0)'],
+      ],
+      128,
+    );
+  }
+  return cachedContactShadow;
+}
+
 /** sun flare: core glow + cross streaks + ring */
 export function flareTexture(): THREE.Texture {
   const S = 512;
