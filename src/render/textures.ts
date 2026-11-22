@@ -1052,30 +1052,37 @@ export function ringCityHullTexture(seed = 131): THREE.Texture {
   return t;
 }
 
-/** Low-albedo paneled reactor core texture for ring-city central sphere. */
+/** Paneled metallic reactor/habitat core texture for ring-city central sphere. */
 export function ringCityCoreTexture(seed = 131): THREE.Texture {
   const W = 512;
   const H = 256;
   const [c, g] = canvas(W, H);
   const rnd = mulberry32(seed + 47);
 
-  g.fillStyle = '#141b26';
+  // readable slate-steel base so lit & shadow faces show hull plating instead of pure black
+  g.fillStyle = '#3b495e';
   g.fillRect(0, 0, W, H);
 
-  // armored meridian & latitude ribs
+  // armored meridian & latitude hull plates with subtle panel variation + highlight bevels
   const cols = 24;
   const rows = 10;
   const pw = W / cols;
   const ph = H / rows;
   for (let r = 0; r < rows; r++) {
     for (let k = 0; k < cols; k++) {
-      const v = 16 + Math.floor(rnd() * 14);
-      g.fillStyle = `rgb(${v}, ${v + 5}, ${v + 12})`;
+      const v = 66 + Math.floor(rnd() * 38);
+      g.fillStyle = `rgb(${v}, ${v + 12}, ${v + 28})`;
       g.fillRect(k * pw + 1, r * ph + 1, pw - 2, ph - 2);
+      if ((r + k) % 3 === 0) {
+        g.fillStyle = 'rgba(22, 30, 44, 0.30)';
+        g.fillRect(k * pw + 3, r * ph + 4, pw - 6, ph - 8);
+      }
+      g.fillStyle = 'rgba(210, 232, 252, 0.28)';
+      g.fillRect(k * pw + 1, r * ph + 1, pw - 2, 1.5);
     }
   }
-  g.strokeStyle = 'rgba(6, 10, 16, 0.8)';
-  g.lineWidth = 1.5;
+  g.strokeStyle = 'rgba(14, 20, 30, 0.82)';
+  g.lineWidth = 1.6;
   for (let k = 0; k <= cols; k++) {
     g.beginPath();
     g.moveTo(k * pw, 0);
@@ -1089,9 +1096,12 @@ export function ringCityCoreTexture(seed = 131): THREE.Texture {
     g.stroke();
   }
 
-  // dark equatorial recessed band where the blue core ring sits
-  g.fillStyle = '#0b1018';
-  g.fillRect(0, H * 0.44, W, H * 0.12);
+  // recessed equatorial & mid-latitude collar bands where the glowing core rings sit
+  g.fillStyle = '#1d2738';
+  g.fillRect(0, H * 0.45, W, H * 0.10);
+  g.fillStyle = '#253246';
+  g.fillRect(0, H * 0.28, W, H * 0.045);
+  g.fillRect(0, H * 0.675, W, H * 0.045);
 
   const t = tex(c);
   t.wrapS = THREE.RepeatWrapping;

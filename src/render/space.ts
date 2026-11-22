@@ -1143,10 +1143,10 @@ function buildRingCity(p: PlanetDef): THREE.Group {
   });
   const coreMat = new THREE.MeshStandardMaterial({
     map: ringCityCoreTexture(p.seed),
-    color: 0x4f617a,
-    metalness: 0.82,
-    roughness: 0.42,
-    envMapIntensity: 1.35,
+    color: 0x7389a6,
+    metalness: 0.58,
+    roughness: 0.5,
+    envMapIntensity: 1.45,
   });
 
   // 1) Main outer ring (1.55R–1.75R) with chamfered architectural profile
@@ -1410,20 +1410,124 @@ function buildRingCity(p: PlanetDef): THREE.Group {
     surface.add(im);
   }
 
-  // 6) Small dark artificial core + blue equatorial ring lamp + 4 slender dark-metal spokes
-  const coreSphere = new THREE.Mesh(new THREE.SphereGeometry(R * 0.44, 36, 24), coreMat);
+  // 6) Inhabited central core hub: paneled sphere + 3 glowing ring bands + >=180 instanced
+  //    warm-white/amber cabin windows (15% unlit) + polar cap light dot rings + 4 spokes
+  const coreR = R * 0.44;
+  const coreSphere = new THREE.Mesh(new THREE.SphereGeometry(coreR, 36, 24), coreMat);
   const coreRing = new THREE.Mesh(
     new THREE.TorusGeometry(R * 0.465, R * 0.022, 10, 64),
     glow(0x52c8ff, 1.95),
   );
   coreRing.rotation.x = Math.PI / 2;
+
+  // 2 additional mid-latitude glowing ring bands (instanced, ±34°)
+  const subRingLat = (34 * Math.PI) / 180;
+  const subRingR = coreR * Math.cos(subRingLat) + R * 0.012;
+  const subRingY = coreR * Math.sin(subRingLat);
+  const coreSubRingGeo = new THREE.TorusGeometry(subRingR, R * 0.011, 8, 56);
+  coreSubRingGeo.rotateX(Math.PI / 2);
+  const coreSubRings = new THREE.InstancedMesh(coreSubRingGeo, glow(0x74dcff, 1.75), 2);
+  scV.set(1, 1, 1);
+  q.identity();
+  m.compose(posV.set(0, subRingY, 0), q, scV);
+  coreSubRings.setMatrixAt(0, m);
+  m.compose(posV.set(0, -subRingY, 0), q, scV);
+  coreSubRings.setMatrixAt(1, m);
+  coreSubRings.instanceMatrix.needsUpdate = true;
+
+  // Instanced self-luminous cabin windows on the core sphere (6 latitude bands, 15% unlit -> >220 lit)
+  const coreWinSlots: { pos: THREE.Vector3; nrm: THREE.Vector3; sx: number; sy: number; col: THREE.Color }[] = [];
+  const coreBands: [number, number][] = [
+    [-46, 40],
+    [-24, 52],
+    [-14, 54],
+    [14, 54],
+    [24, 52],
+    [46, 40],
+  ];
+  const coreWarmWhite = new THREE.Color(0xfff1d6);
+  const coreAmber = new THREE.Color(0xffb464);
+  for (const [latDeg, count] of coreBands) {
+    const lat = (latDeg * Math.PI) / 180;
+    const cosL = Math.cos(lat);
+    const sinL = Math.sin(lat);
+    for (let i = 0; i < count; i++) {
+      if (rnd() < 0.15) continue; // 15% unlit for inhabited city rhythm
+      const lon = ((i + (latDeg > 0 ? 0.25 : 0)) / count) * Math.PI * 2;
+      const nx = cosL * Math.sin(lon);
+      const ny = sinL;
+      const nz = cosL * Math.cos(lon);
+      const nrm = new THREE.Vector3(nx, ny, nz);
+      const pos = nrm.clone().multiplyScalar(coreR + R * 0.005);
+      const base = rnd() < 0.56 ? coreWarmWhite : coreAmber;
+      const tier = rnd();
+      const gain = tier < 0.25 ? 1.45 : tier < 0.78 ? 1.0 : 0.58;
+      coreWinSlots.push({
+        pos,
+        nrm,
+        sx: R * (0.025 + rnd() * 0.008) * Math.max(0.75, cosL),
+        sy: R * 0.013,
+        col: base.clone().multiplyScalar(gain),
+      });
+    }
+  }
+  const coreWinMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(1.4, 1.4, 1.4),
+    transparent: true,
+    opacity: 1.0,
+    side: THREE.FrontSide,
+  });
+  const coreWinMesh = new THREE.InstancedMesh(winGeo, coreWinMat, coreWinSlots.length);
+  const upRef = new THREE.Vector3(0, 1, 0);
+  const tangR = new THREE.Vector3();
+  const tangU = new THREE.Vector3();
+  const basisM = new THREE.Matrix4();
+  coreWinSlots.forEach((s, i) => {
+    tangR.crossVectors(upRef, s.nrm);
+    if (tangR.lengthSq() < 1e-4) tangR.set(1, 0, 0);
+    tangR.normalize();
+    tangU.crossVectors(s.nrm, tangR).normalize();
+    basisM.makeBasis(tangR, tangU, s.nrm);
+    q.setFromRotationMatrix(basisM);
+    m.compose(s.pos, q, scV.set(s.sx, s.sy, 1));
+    coreWinMesh.setMatrixAt(i, m);
+    coreWinMesh.setColorAt(i, s.col);
+  });
+  coreWinMesh.instanceMatrix.needsUpdate = true;
+  if (coreWinMesh.instanceColor) coreWinMesh.instanceColor.needsUpdate = true;
+
   const coreCapGeo = new THREE.CylinderGeometry(R * 0.14, R * 0.22, R * 0.12, 16);
   const coreCapTop = new THREE.Mesh(coreCapGeo, trimMat);
-  coreCapTop.position.y = R * 0.44;
+  coreCapTop.position.y = coreR;
   const coreCapBot = new THREE.Mesh(coreCapGeo, trimMat);
-  coreCapBot.position.y = -R * 0.44;
+  coreCapBot.position.y = -coreR;
   coreCapBot.rotation.x = Math.PI;
-  surface.add(coreSphere, coreRing, coreCapTop, coreCapBot);
+
+  // Polar cap rings of glowing light dots (16 top + 16 bottom, instanced)
+  const polarDotGeo = new THREE.SphereGeometry(R * 0.011, 8, 6);
+  const polarDotMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.9, 1.9, 1.9) });
+  const polarDotsPerCap = 16;
+  const corePolarDots = new THREE.InstancedMesh(polarDotGeo, polarDotMat, polarDotsPerCap * 2);
+  const dotCyan = new THREE.Color(0x9eeeff);
+  const dotWarm = new THREE.Color(0xffd28a);
+  scV.set(1, 1, 1);
+  q.identity();
+  for (let cap = 0; cap < 2; cap++) {
+    const ySign = cap === 0 ? 1 : -1;
+    const dotY = ySign * (coreR + R * 0.048);
+    const dotR = R * 0.172;
+    for (let i = 0; i < polarDotsPerCap; i++) {
+      const a = (i / polarDotsPerCap) * Math.PI * 2;
+      const idx = cap * polarDotsPerCap + i;
+      m.compose(posV.set(Math.sin(a) * dotR, dotY, Math.cos(a) * dotR), q, scV);
+      corePolarDots.setMatrixAt(idx, m);
+      corePolarDots.setColorAt(idx, i % 4 === 0 ? dotWarm : dotCyan);
+    }
+  }
+  corePolarDots.instanceMatrix.needsUpdate = true;
+  if (corePolarDots.instanceColor) corePolarDots.instanceColor.needsUpdate = true;
+
+  surface.add(coreSphere, coreRing, coreSubRings, coreWinMesh, coreCapTop, coreCapBot, corePolarDots);
 
   const spokeLen = R * 1.16;
   const spokeGeo = new THREE.BoxGeometry(R * 0.055, R * 0.044, spokeLen);
@@ -1462,6 +1566,7 @@ function buildRingCity(p: PlanetDef): THREE.Group {
   g.userData.ringCity = {
     center: new THREE.Vector3(p.pos.x, p.pos.y, p.pos.z),
     winMat,
+    coreWinMat,
     navMat,
     navUniforms,
   };
@@ -2002,7 +2107,13 @@ export function buildSpace(): SpaceView {
         const dm = p.getObjectByName('dustMotes');
         if (dm) dm.rotation.y += dt * 0.008;
         const rc = p.userData.ringCity as
-          | { center: THREE.Vector3; winMat: THREE.MeshBasicMaterial; navMat: THREE.MeshBasicMaterial; navUniforms: { uTime: { value: number } } }
+          | {
+              center: THREE.Vector3;
+              winMat: THREE.MeshBasicMaterial;
+              coreWinMat: THREE.MeshBasicMaterial;
+              navMat: THREE.MeshBasicMaterial;
+              navUniforms: { uTime: { value: number } };
+            }
           | undefined;
         if (rc) {
           rc.navUniforms.uTime.value = t;
@@ -2011,6 +2122,7 @@ export function buildSpace(): SpaceView {
           const fadeT = Math.max(0, Math.min(1, (dCam - 680) / (1650 - 680)));
           const smoothFade = fadeT * fadeT * (3 - 2 * fadeT);
           rc.winMat.opacity = 1.0 - smoothFade * 0.72;
+          rc.coreWinMat.opacity = 1.0 - smoothFade * 0.72;
           rc.navMat.opacity = 1.0 - smoothFade * 0.66;
         }
       }
