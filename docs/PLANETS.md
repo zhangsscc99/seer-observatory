@@ -90,6 +90,8 @@
 3. ✅ 特写机位与 look-gate 出图项（`b8a8c59`，F1303）：`src/main.ts` `focusPlanet('magnetar')` 设为 `4.2R`、磁赤道上方 `18°`、朝太阳偏转 `46°`、机头微压 `0.08 rad`（横/竖屏 `focusFovV = 66° / 104°`，船位距原点 `992`），兼顾铁壳昼夜明暗交界与偶极磁力线弧笼全景入画，且星体盘面浮于飞船上方不被遮挡；`scripts/measure-look.mjs` 加入 `['magnetar', 'mag']` 出图项与 `shots:` 提示行（阈值不放宽）。
 4. ✅ 实测门禁数字（2026-11-22）：`npx tsc --noEmit` 0 错误；`node --check scripts/measure-look.mjs` 通过；`node --test src/game/` **58 pass / 0 fail**（较原有 57 pass +1）；`npm run build` 成功（33 modules，`dist/assets/index-Dt0v0C_I.js` **830.92 kB / gzip 227.54 kB**）。
 
-下一颗候选：待定（七颗特色星球全部上线，之后按画质走查清单 T3–T13 逐条推进）。
+下一颗候选：待定（七颗特色星球全部上线，之后按画质走查清单 T3–T15 逐条推进）。
+
+5. ✅ 调度器验收（2026-11-22，两轮复跑）：`node scripts/measure-look.mjs` → `LOOK OK`（844×390：cabin `122.24 / darkFrac 0.02 / p95 230.69`、space `94.00 / 181.59`、**mag `84.6 / 205.0`**；390×844 info：cabin `131.56`、space `90.88`、mag `82.3 / 208.2`）；两次连跑四项主指标差 ≤0.6。`bash scripts/ci-deploy.sh` → `DEPLOY OK`（`index-Dt0v0C_I.js`）；公网 `https://openfolio.uk/seer/` 200 且 asset 哈希与本机一致。视审遗留：T14（特写 HUD 目标文案仍是旧目标）、T15（竖屏磁弧交叠/贴边）、T13（舱内材质仍偏 Demo）。
 
 进度标记：⏳ 进行中 · ✅ 已上线（带提交 hash）· 未开始
