@@ -153,13 +153,14 @@ space.setTarget(targetId);
 function applyTargetHolo(p: PlanetDef): void {
   if (p.kind === 'binary') cabin.setHoloColor(0xbfe0ff, 0xffb066);
   else if (p.kind === 'blackhole') cabin.setHoloColor(0xf4ecff, 0x3b186e);
+  else if (p.kind === 'ring-city') cabin.setHoloColor(0xfff1dc, 0xffb464);
   else cabin.setHoloColor(p.colors[2]);
 }
 function previewTarget(id: string): void {
   const p = planetById(id);
   if (!p) return;
   applyTargetHolo(p);
-  if (p.kind === 'blackhole' && p.hazard) {
+  if ((p.kind === 'blackhole' || p.kind === 'ring-city') && p.hazard) {
     hud.setWarn(hazardEffect(p.hazard).warn, p.hazard);
   } else if (mode.mode === 'cabin') {
     hud.setWarn(null, null);
@@ -414,7 +415,10 @@ function updateSpace(dt: number, active: boolean): void {
   const warnHazard =
     tidalZone === 'crush'
       ? 'tidal'
-      : near?.hazard ?? (selectedPlanet?.kind === 'binary' || selectedPlanet?.kind === 'blackhole' ? selectedPlanet.hazard : undefined);
+      : near?.hazard ??
+        (selectedPlanet?.kind === 'binary' || selectedPlanet?.kind === 'blackhole' || selectedPlanet?.kind === 'ring-city'
+          ? selectedPlanet.hazard
+          : undefined);
   const warnText =
     tidalZone === 'crush'
       ? `潮汐临界·引力张量 ${Math.round(tidalTension * 100)}% · 自动弹离就绪`
