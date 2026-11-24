@@ -7,6 +7,7 @@ import { beltRocks, BINARY_STARS, PLANETS, STATION, SUN_DIR, SUN_DISTANCE, SUN_R
 import { MAT, arc, glow } from './materials.ts';
 import { PAL } from './palette.ts';
 import { buildRings } from './rings.ts';
+import { oceanDeepController } from './ocean-deep.ts';
 import {
   binaryTexture,
   blackholeDiskTexture,
@@ -3117,6 +3118,10 @@ export function buildSpace(): SpaceView {
       pulseRing.visible = true;
     },
     update(t, dt, cam, shipPos, _fwd, speedFrac) {
+      if (oceanDeepController.active) {
+        oceanDeepController.update(t, dt, cam, far.parent);
+        return;
+      }
       for (const p of planets) {
         p.getObjectByName('surface')!.rotation.y += dt * 0.01;
         for (const m of (p.userData.timeMats ?? []) as THREE.ShaderMaterial[]) m.uniforms.uTime.value = t;
@@ -3270,6 +3275,7 @@ export function buildSpace(): SpaceView {
       }
       dustGeo.attributes.position.needsUpdate = true;
       dustMat.size = 0.9 + speedFrac * 1.6;
+      oceanDeepController.update(t, dt, cam, far.parent);
     },
   };
 }

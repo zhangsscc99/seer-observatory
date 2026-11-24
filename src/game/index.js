@@ -5,6 +5,7 @@ import "./archive.test.js";
 import "./cabin.test.js";
 import "./dock.test.js";
 import "./mode.test.js";
+import "./ocean-deep.test.js";
 import "./scan.test.js";
 import "./ship.test.js";
 import "./space.test.js";
