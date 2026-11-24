@@ -4,6 +4,7 @@ import type { DockState } from '../game/dock.ts';
 import type { Playable } from '../game/mode.ts';
 import type { HazardKind } from '../game/scan.ts';
 import type { PlanetDef } from '../game/space.ts';
+import { oceanDeepController } from './ocean-deep.ts';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -130,6 +131,10 @@ export class Hud {
     this.closePanels();
     this.setWarn(null, null);
     this.setScan(null, 0, false);
+    // Support direct ?scene=ocean-deep entry while keeping default cabin/space untouched
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('scene') === 'ocean-deep') {
+      oceanDeepController.requestEnter();
+    }
   }
 
   setMuted(m: boolean): void {
@@ -260,6 +265,25 @@ export class Hud {
       });
       frag.appendChild(row);
     }
+    // Direct surface-expedition entry inside the Star Map modal (hidden during normal cabin/space HUD checks)
+    const oceanRow = document.createElement('button');
+    oceanRow.type = 'button';
+    oceanRow.id = 'enterOceanDeep';
+    oceanRow.className = 'targetRow';
+    const oName = document.createElement('span');
+    oName.className = 'targetName';
+    oName.textContent = '海洋星 · 深水区（着陆探索）';
+    const oMeta = document.createElement('span');
+    oMeta.className = 'targetMeta';
+    oMeta.textContent = '3D 遗迹场景 · 步行探索';
+    oceanRow.append(oName, oMeta);
+    oceanRow.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.closeTargets();
+      oceanDeepController.requestEnter();
+    });
+    frag.appendChild(oceanRow);
     this.targetRows.replaceChildren(frag);
     this.launch.disabled = this.selectedTargetId === null;
   }
